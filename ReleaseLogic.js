@@ -168,7 +168,7 @@ function parseAniListResponse(rawJson, seenMap) {
   }
 
   if (!rawJson) {
-    result.error = "Empty response"
+    result.error = "No response from AniList"
     return result
   }
 
@@ -176,12 +176,20 @@ function parseAniListResponse(rawJson, seenMap) {
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
-    result.error = "JSON parse error: " + e.message
+    result.error = "Invalid AniList response format"
     return result
   }
 
   if (data.errors && data.errors.length > 0) {
-    result.error = data.errors[0].message || "AniList API error"
+    var firstErr = data.errors[0]
+    var msg = String(firstErr.message || "").toLowerCase()
+    if (firstErr.status === 404 || msg.indexOf("not found") !== -1) {
+      result.error = "User not found on AniList"
+    } else if (msg.indexOf("private") !== -1) {
+      result.error = "AniList profile or list is private"
+    } else {
+      result.error = firstErr.message || "AniList API error"
+    }
     return result
   }
 
@@ -191,6 +199,9 @@ function parseAniListResponse(rawJson, seenMap) {
     if (data.data.user.avatar) {
       result.userAvatar = data.data.user.avatar.large || data.data.user.avatar.medium || ""
     }
+  } else if (!data.data || !data.data.user) {
+    result.error = "User not found on AniList"
+    return result
   }
 
   var nowSec = Math.floor(Date.now() / 1000)
@@ -341,16 +352,35 @@ function parseAniListResponse(rawJson, seenMap) {
 
 function parseMALListResponse(rawJson) {
   var list = []
-  if (!rawJson) return list
+  if (!rawJson) {
+    list.error = "No response from MyAnimeList"
+    return list
+  }
 
   var data = null
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
+    list.error = "Invalid MAL response format"
     return list
   }
 
-  if (!Array.isArray(data)) return list
+  if (data && data.errors && data.errors.length > 0) {
+    var msg = String(data.errors[0].message || "").toLowerCase()
+    if (msg.indexOf("private") !== -1) {
+      list.error = "MAL watchlist is private"
+    } else if (msg.indexOf("invalid") !== -1 || msg.indexOf("not found") !== -1) {
+      list.error = "User not found on MyAnimeList"
+    } else {
+      list.error = data.errors[0].message || "MyAnimeList error"
+    }
+    return list
+  }
+
+  if (!Array.isArray(data)) {
+    list.error = "User not found or watchlist unavailable on MAL"
+    return list
+  }
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i]
@@ -380,16 +410,35 @@ function parseMALListResponse(rawJson) {
 
 function parseMALMangaResponse(rawJson) {
   var list = []
-  if (!rawJson) return list
+  if (!rawJson) {
+    list.error = "No response from MyAnimeList"
+    return list
+  }
 
   var data = null
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
+    list.error = "Invalid MAL response format"
     return list
   }
 
-  if (!Array.isArray(data)) return list
+  if (data && data.errors && data.errors.length > 0) {
+    var msg = String(data.errors[0].message || "").toLowerCase()
+    if (msg.indexOf("private") !== -1) {
+      list.error = "MAL manga list is private"
+    } else if (msg.indexOf("invalid") !== -1 || msg.indexOf("not found") !== -1) {
+      list.error = "User not found on MyAnimeList"
+    } else {
+      list.error = data.errors[0].message || "MyAnimeList error"
+    }
+    return list
+  }
+
+  if (!Array.isArray(data)) {
+    list.error = "User not found or manga list unavailable on MAL"
+    return list
+  }
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i]

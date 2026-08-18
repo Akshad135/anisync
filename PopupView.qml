@@ -29,6 +29,8 @@ Item {
   property string malAvatar: host ? host.malAvatar : ""
   property string userBanner: host ? host.userBanner : ""
   property string customBanner: host ? host.customBanner : ""
+  property string aniListError: host ? host.aniListError : ""
+  property string malError: host ? host.malError : ""
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
   property int checkIntervalMins: host ? host.checkIntervalMins : 30
@@ -1343,12 +1345,14 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                text: root.aniListUser.trim().length > 0 
-                  ? "✓ Active · Syncs countdown schedules, covers & banner" 
-                  : "Syncs your watching/reading lists and exact countdowns"
+                text: {
+                  if (root.aniListError && root.aniListError.length > 0) return "⚠ " + root.aniListError
+                  if (root.aniListUser.trim().length > 0) return "✓ Connected · Syncs countdown schedules, covers & banner"
+                  return "Syncs your watching/reading lists and exact countdowns"
+                }
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
-                color: root.aniListUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
+                color: (root.aniListError && root.aniListError.length > 0) ? "#f87171" : (root.aniListUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25))
               }
             }
 
@@ -1372,12 +1376,14 @@ Item {
 
               Text {
                 Layout.fillWidth: true
-                text: root.malUser.trim().length > 0 
-                  ? "✓ Active · Merged with AniList into unified watchlist" 
-                  : "Optional · Can be combined with AniList simultaneously"
+                text: {
+                  if (root.malError && root.malError.length > 0) return "⚠ " + root.malError
+                  if (root.malUser.trim().length > 0) return "✓ Connected · Merged with AniList into unified watchlist"
+                  return "Optional · Can be combined with AniList simultaneously"
+                }
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
-                color: root.malUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
+                color: (root.malError && root.malError.length > 0) ? "#f87171" : (root.malUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25))
               }
             }
 

@@ -37,6 +37,8 @@ BarWidget {
   property string userAvatar: ""
   property string aniAvatar: ""
   property string malAvatar: ""
+  property string aniListError: ""
+  property string malError: ""
   property string userBanner: ""
   property string customBanner: ""
 
@@ -285,12 +287,13 @@ BarWidget {
     root.isFetching = true
 
     if (root.aniListUser) {
+      root.aniListError = ""
       var payload = Logic.buildAniListUserQuery(root.aniListUser)
       aniListFetchProc.command = [
         "curl", "-fsS", "--max-time", "15",
         "-X", "POST", "https://graphql.anilist.co",
         "-H", "Content-Type: application/json",
-        "-H", "User-Agent: OmarchyAnimeWatcher/1.0",
+        "-H", "User-Agent: OmarchyAniSync/1.0",
         "-d", payload
       ]
       aniListFetchProc.running = true
@@ -300,9 +303,11 @@ BarWidget {
       root.upcomingList = []
       root.recentDrops = []
       root.aniAvatar = ""
+      root.aniListError = ""
     }
 
     if (root.malUser) {
+      root.malError = ""
       malFetchProc.command = [
         "curl", "-fsS", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
@@ -327,6 +332,7 @@ BarWidget {
       root.rawMALAnime = []
       root.rawMALManga = []
       root.malAvatar = ""
+      root.malError = ""
     }
   }
 
@@ -335,8 +341,17 @@ BarWidget {
     if (!rawText) return
 
     var parsed = Logic.parseAniListResponse(rawText, root.seenDrops)
-    if (parsed.error) return
+    if (parsed.error) {
+      root.aniListError = parsed.error
+      root.rawAniListAnime = []
+      root.rawAniListManga = []
+      root.upcomingList = []
+      root.recentDrops = []
+      root.unifyLists()
+      return
+    }
 
+    root.aniListError = ""
     root.rawAniListAnime = parsed.watchingAnime || []
     root.rawAniListManga = parsed.readingManga || []
     root.upcomingList = parsed.upcomingAnime || []
@@ -363,14 +378,27 @@ BarWidget {
   function onMALFetched(rawText) {
     root.isFetching = false
     if (!rawText) return
-    root.rawMALAnime = Logic.parseMALListResponse(rawText)
+    var malList = Logic.parseMALListResponse(rawText)
+    if (malList.error) {
+      root.malError = malList.error
+      root.rawMALAnime = []
+    } else {
+      root.malError = ""
+      root.rawMALAnime = malList
+    }
     root.unifyLists()
   }
 
   function onMALMangaFetched(rawText) {
     root.isFetching = false
     if (!rawText) return
-    root.rawMALManga = Logic.parseMALMangaResponse(rawText)
+    var malMList = Logic.parseMALMangaResponse(rawText)
+    if (malMList.error) {
+      if (!root.malError) root.malError = malMList.error
+      root.rawMALManga = []
+    } else {
+      root.rawMALManga = malMList
+    }
     root.unifyLists()
   }
 

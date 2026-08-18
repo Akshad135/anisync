@@ -217,3 +217,33 @@ test("parseMALUserAvatar extracts user avatar URL from profile HTML", () => {
   const avatarUrl = Logic.parseMALUserAvatar(sampleHtml)
   assert.equal(avatarUrl, "https://cdn.myanimelist.net/s/common/userimages/c3f4dc4a-ef1f-48d2-970b-cd23a8cc37ad_225w?s=012c053fba954194fcef80b68f1e13c3")
 })
+
+test("parseAniListResponse handles non-existent user 404 gracefully", () => {
+  const notFound = {
+    errors: [{ message: "Not Found.", status: 404 }],
+    data: { user: null }
+  }
+  const res = Logic.parseAniListResponse(notFound, {})
+  assert.equal(res.error, "User not found on AniList")
+  assert.equal(res.watchingAnime.length, 0)
+})
+
+test("parseAniListResponse handles private profile gracefully", () => {
+  const privateList = {
+    errors: [{ message: "This user's list is private." }],
+    data: { user: { name: "secret" } }
+  }
+  const res = Logic.parseAniListResponse(privateList, {})
+  assert.equal(res.error, "AniList profile or list is private")
+  assert.equal(res.watchingAnime.length, 0)
+})
+
+test("parseMALListResponse handles non-existent and private MAL users gracefully", () => {
+  const invalidMal = { errors: [{ message: "invalid request" }] }
+  const res1 = Logic.parseMALListResponse(invalidMal)
+  assert.equal(res1.error, "User not found on MyAnimeList")
+
+  const privateMal = { errors: [{ message: "list is private" }] }
+  const res2 = Logic.parseMALListResponse(privateMal)
+  assert.equal(res2.error, "MAL watchlist is private")
+})
