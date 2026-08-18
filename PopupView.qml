@@ -29,13 +29,22 @@ Item {
   property bool notifyManga: host ? host.notifyManga : true
   property int unseenCount: host ? host.unseenCount : 0
 
+  // Tick every 15s to refresh countdown strings
+  property int tickCounter: 0
+  Timer {
+    interval: 15000
+    running: true
+    repeat: true
+    onTriggered: root.tickCounter++
+  }
+
   // Computed properties
   readonly property bool canSync: (root.aniListUser.trim().length > 0 || root.malUser.trim().length > 0)
   readonly property string displayUserName: root.aniListUser.trim().length > 0 
     ? root.aniListUser.trim() 
     : (root.malUser.trim().length > 0 ? root.malUser.trim() : "Anime Watcher")
 
-  // Main 3 panels: Anime, Manga, Explore (with clean recognizable icons)
+  // Main 3 panels: Anime, Manga, Explore
   readonly property var mainTabsModel: {
     var list = []
     if (root.showAnime) list.push({ id: "anime", label: "Anime", icon: "󰿎" })
@@ -321,13 +330,13 @@ Item {
         id: animeListView
         anchors.fill: parent
         clip: true
-        spacing: Style.space(4)
+        spacing: Style.space(6)
         model: root.watchingList
 
         delegate: Rectangle {
           id: animeCard
           width: animeListView.width
-          height: modelData.nextEpisode ? Style.space(62) : Style.space(54)
+          height: modelData.nextEpisode ? Style.space(68) : Style.space(56)
           radius: Style.cornerRadius
           color: animeCardMouse.containsMouse ? Util.alpha(colAccent, 0.12) : "transparent"
           border.color: animeCardMouse.containsMouse ? Util.alpha(colAccent, 0.3) : "transparent"
@@ -347,8 +356,8 @@ Item {
 
             // Cover Image
             Rectangle {
-              width: Style.space(34)
-              height: modelData.nextEpisode ? Style.space(48) : Style.space(42)
+              width: Style.space(36)
+              height: modelData.nextEpisode ? Style.space(54) : Style.space(44)
               radius: 4
               clip: true
               color: Util.alpha(colForeground, 0.08)
@@ -372,8 +381,9 @@ Item {
             // Info
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(1)
+              spacing: Style.space(2)
 
+              // Title
               Text {
                 Layout.fillWidth: true
                 text: modelData.title
@@ -384,6 +394,7 @@ Item {
                 elide: Text.ElideRight
               }
 
+              // Progress + Score
               RowLayout {
                 Layout.fillWidth: true
                 spacing: Style.space(6)
@@ -405,17 +416,47 @@ Item {
                 }
               }
 
-              // Next Airing Info
+              // Next Airing Countdown Chip & Schedule
               RowLayout {
-                visible: modelData.nextEpisode !== null && modelData.nextEpisode !== undefined
-                spacing: Style.space(4)
+                visible: modelData.nextEpisode !== null && modelData.nextEpisode !== undefined && modelData.airingAt > 0
+                spacing: Style.space(6)
+
+                Rectangle {
+                  radius: 3
+                  color: Util.alpha(colAccent, 0.22)
+                  implicitWidth: epBadge.implicitWidth + 8
+                  implicitHeight: epBadge.implicitHeight + 3
+
+                  Text {
+                    id: epBadge
+                    anchors.centerIn: parent
+                    text: {
+                      var dummy = root.tickCounter
+                      return "Ep " + modelData.nextEpisode + " " + Logic.formatCountdown(modelData.airingAt)
+                    }
+                    font.family: root.fontFamily
+                    font.pixelSize: 10
+                    font.bold: true
+                    color: colAccent
+                  }
+                }
 
                 Text {
-                  text: "Next: Ep " + modelData.nextEpisode + " " + Logic.formatCountdown(modelData.airingAt)
+                  text: Logic.formatAiringTime(modelData.airingAt)
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   color: colMuted
+                  elide: Text.ElideRight
                 }
+              }
+
+              // Status for finished shows without upcoming episodes
+              Text {
+                visible: (!modelData.nextEpisode || !modelData.airingAt)
+                text: modelData.status === "FINISHED" ? ("Completed · " + (modelData.totalEpisodes || modelData.progress) + " eps") : (modelData.status || "")
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                color: colMuted
               }
             }
 
@@ -519,13 +560,13 @@ Item {
         id: mangaListView
         anchors.fill: parent
         clip: true
-        spacing: Style.space(4)
+        spacing: Style.space(6)
         model: root.readingManga
 
         delegate: Rectangle {
           id: mangaCard
           width: mangaListView.width
-          height: Style.space(54)
+          height: Style.space(56)
           radius: Style.cornerRadius
           color: mangaCardMouse.containsMouse ? Util.alpha(colAccent, 0.12) : "transparent"
           border.color: mangaCardMouse.containsMouse ? Util.alpha(colAccent, 0.3) : "transparent"
@@ -544,8 +585,8 @@ Item {
             spacing: Style.space(8)
 
             Rectangle {
-              width: Style.space(34)
-              height: Style.space(42)
+              width: Style.space(36)
+              height: Style.space(44)
               radius: 4
               clip: true
               color: Util.alpha(colForeground, 0.08)
@@ -568,7 +609,7 @@ Item {
 
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(1)
+              spacing: Style.space(2)
 
               Text {
                 Layout.fillWidth: true
@@ -598,6 +639,24 @@ Item {
                   font.pixelSize: Style.font.caption
                   color: "#f5c518"
                   visible: modelData.score > 0
+                }
+
+                Rectangle {
+                  visible: modelData.status === "RELEASING"
+                  radius: 3
+                  color: Util.alpha(colAccent, 0.15)
+                  implicitWidth: mangaPubText.implicitWidth + 6
+                  implicitHeight: mangaPubText.implicitHeight + 2
+
+                  Text {
+                    id: mangaPubText
+                    anchors.centerIn: parent
+                    text: "Publishing"
+                    font.family: root.fontFamily
+                    font.pixelSize: 9
+                    font.bold: true
+                    color: colAccent
+                  }
                 }
               }
             }
@@ -734,7 +793,7 @@ Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
           clip: true
-          spacing: Style.space(4)
+          spacing: Style.space(6)
           model: root.searchResults
 
           delegate: Rectangle {
@@ -759,7 +818,7 @@ Item {
               spacing: Style.space(8)
 
               Rectangle {
-                width: Style.space(34)
+                width: Style.space(36)
                 height: Style.space(44)
                 radius: 4
                 clip: true

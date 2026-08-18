@@ -313,6 +313,24 @@ function parseAniListResponse(rawJson, seenMap) {
     }
   }
 
+  // Sort watching anime: upcoming airing first (closest airing date), then active releasing, then others
+  result.watchingAnime.sort(function(a, b) {
+    var aHasAiring = (a.airingAt && a.airingAt > nowSec) ? 1 : 0
+    var bHasAiring = (b.airingAt && b.airingAt > nowSec) ? 1 : 0
+    if (aHasAiring !== bHasAiring) return bHasAiring - aHasAiring
+    if (aHasAiring && bHasAiring) return a.airingAt - b.airingAt
+    if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
+    if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
+    return 0
+  })
+
+  // Sort reading manga: releasing first, then others
+  result.readingManga.sort(function(a, b) {
+    if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
+    if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
+    return 0
+  })
+
   return result
 }
 
