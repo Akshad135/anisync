@@ -22,22 +22,10 @@ A native [Omarchy](https://omarchy.org/) status bar and popup plugin that synchr
 
 ## Installation
 
-Install and enable the plugin with a single command:
+Install and enable the plugin:
 
 ```bash
 omarchy plugin add https://github.com/Akshad135/anisync.git --enable
-```
-
-Alternatively, to install manually:
-
-```bash
-git clone https://github.com/Akshad135/anisync.git ~/.config/omarchy/plugins/akshad135.anisync
-omarchy plugin enable akshad135.anisync --section right
-```
-
-Restart the shell to load the widget:
-
-```bash
 omarchy restart shell
 ```
 
@@ -101,7 +89,7 @@ omarchy plugin remove akshad135.anisync
 - **Network Services:** Queries public HTTPS endpoints on AniList (`https://graphql.anilist.co`) and MyAnimeList (`https://myanimelist.net/`) with strict `--proto =https` protocol enforcement and `--max-time` limits.
 - **Zero Credentials:** No OAuth tokens, secrets, or passwords required or stored.
 - **Safe Execution:** All background child processes use structured argument arrays via Quickshell `Process` without shell string interpolation.
-- **Privilege Boundary:** Runs entirely as an unprivileged user process. No `sudo`, `pkexec`, or system services required.
+- **Privilege Boundary:** Runs entirely as an unprivileged user process without elevated permissions or background daemons.
 - **State Storage:** Settings and seen notification caches are stored safely in `~/.local/state/omarchy/plugins/akshad135.anisync/`.
 
 ---
