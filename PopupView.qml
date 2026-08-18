@@ -1318,10 +1318,10 @@ Item {
             }
           }
 
-          // Background Sync Interval
+          // Background Sync Interval (Full Width Segmented Bar)
           ColumnLayout {
             Layout.fillWidth: true
-            spacing: Style.space(4)
+            spacing: Style.space(6)
 
             Text {
               text: "Background Sync Interval"
@@ -1330,45 +1330,51 @@ Item {
               color: colDim
             }
 
-            RowLayout {
-              spacing: Style.space(4)
+            Rectangle {
+              Layout.fillWidth: true
+              height: Style.space(30)
+              radius: Style.cornerRadius
+              color: Util.alpha(colForeground, 0.06)
 
-              Repeater {
-                model: [
-                  { label: "15m", val: 15 },
-                  { label: "30m", val: 30 },
-                  { label: "1h", val: 60 },
-                  { label: "2h", val: 120 },
-                  { label: "Manual", val: 0 }
-                ]
+              RowLayout {
+                anchors.fill: parent
+                anchors.margins: Style.space(3)
+                spacing: Style.space(3)
 
-                delegate: Rectangle {
-                  implicitWidth: intText.implicitWidth + 14
-                  implicitHeight: Style.space(24)
-                  radius: Style.cornerRadius - 1
-                  color: (root.checkIntervalMins === modelData.val) 
-                    ? colAccent 
-                    : (intHover.containsMouse ? Util.alpha(colForeground, 0.12) : Util.alpha(colForeground, 0.06))
-                  border.color: (root.checkIntervalMins === modelData.val) ? colAccent : Util.alpha(colBorder, 0.2)
-                  border.width: 1
+                Repeater {
+                  model: [
+                    { label: "15m", val: 15 },
+                    { label: "30m", val: 30 },
+                    { label: "1h", val: 60 },
+                    { label: "2h", val: 120 },
+                    { label: "Manual", val: 0 }
+                  ]
 
-                  Text {
-                    id: intText
-                    anchors.centerIn: parent
-                    text: modelData.label
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    font.bold: (root.checkIntervalMins === modelData.val)
-                    color: (root.checkIntervalMins === modelData.val) ? "#12131a" : (intHover.containsMouse ? colForeground : colDim)
-                  }
+                  delegate: Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: Style.cornerRadius - 1
+                    color: (root.checkIntervalMins === modelData.val) 
+                      ? colAccent 
+                      : (intHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
 
-                  MouseArea {
-                    id: intHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      if (host && host.updateSetting) host.updateSetting("checkIntervalMins", modelData.val)
+                    Text {
+                      anchors.centerIn: parent
+                      text: modelData.label
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: (root.checkIntervalMins === modelData.val)
+                      color: (root.checkIntervalMins === modelData.val) ? "#12131a" : (intHover.containsMouse ? colForeground : colDim)
+                    }
+
+                    MouseArea {
+                      id: intHover
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        if (host && host.updateSetting) host.updateSetting("checkIntervalMins", modelData.val)
+                      }
                     }
                   }
                 }
