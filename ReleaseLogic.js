@@ -597,12 +597,12 @@ function formatCountdown(targetEpochSecs) {
 function formatShortTicker(item) {
   if (!item) return ""
   var title = item.title || ""
-  if (title.length > 16) {
-    title = title.substring(0, 14) + "…"
+  if (title.length > 13) {
+    title = title.substring(0, 11) + "…"
   }
   var epStr = item.nextEpisode ? (" Ep " + item.nextEpisode) : ""
   var timeStr = formatCountdown(item.airingAt)
-  return title + epStr + " " + timeStr
+  return title + epStr + " · " + timeStr
 }
 
 function formatAiringTime(epochSecs) {

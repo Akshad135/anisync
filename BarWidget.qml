@@ -431,6 +431,13 @@ BarWidget {
     notifyProc.running = true
   }
 
+  readonly property string barIcon: {
+    if (root.unseenCount > 0) return "󱅫 "
+    if (root.aniListUser.length > 0 && root.malUser.length > 0) return "󰿎 "
+    if (root.malUser.length > 0 && root.aniListUser.length === 0) return "󰒓 "
+    return "󰚩 "
+  }
+
   function updateTicker() {
     if (root.unseenCount > 0) {
       root.tickerText = root.unseenCount + " New"
@@ -439,6 +446,10 @@ BarWidget {
     if (root.upcomingList && root.upcomingList.length > 0) {
       var next = root.upcomingList[0]
       root.tickerText = Logic.formatShortTicker(next)
+      return
+    }
+    if (root.watchingList && root.watchingList.length > 0) {
+      root.tickerText = root.watchingList.length + " Watching"
       return
     }
     root.tickerText = "Anime"
@@ -470,7 +481,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: (root.unseenCount > 0 ? "󱅫 " : "󰚩 ") + (root.tickerText || "Anime")
+    text: root.barIcon + (root.tickerText || "Anime")
     active: root.unseenCount > 0
     useActiveColor: true
     activeColor: colAccent
