@@ -1191,12 +1191,13 @@ Item {
               }
 
               Text {
+                Layout.fillWidth: true
                 text: root.aniListUser.trim().length > 0 
                   ? "✓ Active · Syncs countdown schedules, covers & banner" 
                   : "Syncs your watching/reading lists and exact countdowns"
                 font.family: root.fontFamily
-                font.pixelSize: 10
-                color: root.aniListUser.trim().length > 0 ? colAccent : colDim
+                font.pixelSize: Style.font.caption
+                color: root.aniListUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
               }
             }
 
@@ -1219,12 +1220,13 @@ Item {
               }
 
               Text {
+                Layout.fillWidth: true
                 text: root.malUser.trim().length > 0 
                   ? "✓ Active · Merged with AniList into unified watchlist" 
                   : "Optional · Can be combined with AniList simultaneously"
                 font.family: root.fontFamily
-                font.pixelSize: 10
-                color: root.malUser.trim().length > 0 ? colAccent : colDim
+                font.pixelSize: Style.font.caption
+                color: root.malUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
               }
             }
 
@@ -1247,12 +1249,13 @@ Item {
               }
 
               Text {
+                Layout.fillWidth: true
                 text: root.customBanner.trim().length > 0 
                   ? "✓ Custom banner image configured" 
                   : "Leave empty to auto-sync your AniList profile banner"
                 font.family: root.fontFamily
-                font.pixelSize: 10
-                color: root.customBanner.trim().length > 0 ? colAccent : colDim
+                font.pixelSize: Style.font.caption
+                color: root.customBanner.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
               }
             }
           }
@@ -1269,9 +1272,10 @@ Item {
             Layout.fillWidth: true
             spacing: Style.space(10)
 
-            // Col 1: Display Sections
+            // Col 1: Display Sections (50% equal width)
             ColumnLayout {
               Layout.fillWidth: true
+              Layout.preferredWidth: 1
               spacing: Style.space(6)
 
               RowLayout {
@@ -1369,9 +1373,10 @@ Item {
               }
             }
 
-            // Col 2: Release Alerts
+            // Col 2: Release Alerts (50% equal width)
             ColumnLayout {
               Layout.fillWidth: true
+              Layout.preferredWidth: 1
               spacing: Style.space(6)
 
               RowLayout {
