@@ -44,6 +44,12 @@ BarWidget {
   function close() { popupOpen = false }
   function toggle() { popupOpen = !popupOpen }
 
+  onPopupOpenChanged: {
+    if (popupOpen && (root.aniListUser || root.malUser) && root.watchingList.length === 0) {
+      root.sync()
+    }
+  }
+
   // ------------------------------------------------------------- Appearance
   readonly property color colForeground: Color.foreground
   readonly property color colAccent: Color.accent
