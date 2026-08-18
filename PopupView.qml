@@ -1252,7 +1252,7 @@ Item {
                 Layout.fillWidth: true
                 text: root.customBanner.trim().length > 0 
                   ? "✓ Custom banner image configured" 
-                  : "Leave empty to auto-sync your AniList profile banner"
+                  : "Leave empty to auto-sync your account profile banner"
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
                 color: root.customBanner.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
@@ -1487,11 +1487,21 @@ Item {
             Layout.fillWidth: true
             spacing: Style.space(6)
 
-            Text {
-              text: "Background Sync Interval"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              color: colDim
+            RowLayout {
+              spacing: Style.space(4)
+              Text {
+                text: "󰑐"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                color: colAccent
+              }
+              Text {
+                text: "Sync Frequency"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                color: colForeground
+              }
             }
 
             Rectangle {
