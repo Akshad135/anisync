@@ -1,0 +1,20 @@
+{
+  "name": "omarchy-anime-watcher",
+  "version": "1.0.0",
+  "description": "Anime & Manga release tracker for Omarchy status bar",
+  "main": "ReleaseLogic.js",
+  "scripts": {
+    "test": "node --test test/logic.test.mjs"
+  },
+  "keywords": [
+    "omarchy",
+    "quickshell",
+    "anilist",
+    "myanimelist",
+    "anime",
+    "manga",
+    "tracker"
+  ],
+  "author": "Akshad Agrawal",
+  "license": "MIT"
+}

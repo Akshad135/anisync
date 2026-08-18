@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "akshad135.anime-watcher",
+  "name": "Anime Watcher",
+  "version": "1.0.0",
+  "author": "Akshad Agrawal",
+  "license": "MIT",
+  "description": "Anime & Manga release tracker with AniList/MAL sync, countdown timers, and desktop notifications",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Anime Watcher",
+    "description": "Track anime and manga release schedules with AniList/MAL sync",
+    "category": "Media",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "aniListUser": "akshad",
+      "malUser": "",
+      "checkIntervalMins": 30,
+      "enableAnimeNotifications": true,
+      "enableMangaNotifications": true
+    }
+  }
+}
