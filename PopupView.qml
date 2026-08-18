@@ -58,9 +58,14 @@ Item {
     return "Anime Watcher"
   }
 
-  readonly property string activeBanner: (root.customBanner && root.customBanner.trim().length > 0) 
-    ? root.customBanner.trim() 
-    : (root.userBanner || "")
+  readonly property string activeBanner: {
+    if (root.customBanner && root.customBanner.trim().length > 0) return root.customBanner.trim()
+    if (root.userBanner && root.userBanner.trim().length > 0) return root.userBanner.trim()
+    if (root.watchingList && root.watchingList.length > 0 && root.watchingList[0].cover) {
+      return root.watchingList[0].cover
+    }
+    return ""
+  }
 
   // Main 3 panels: Anime, Manga, Explore
   readonly property var mainTabsModel: {
@@ -102,30 +107,42 @@ Item {
     anchors.fill: parent
     spacing: Style.space(8)
 
-    // ------------------------------------------------------------- Header with Background Banner
+    // ------------------------------------------------------------- Header with Dynamic Banner Backdrop
     Rectangle {
       Layout.fillWidth: true
       Layout.preferredHeight: Style.space(48)
       radius: Style.cornerRadius
       clip: true
-      color: Util.alpha(colCardBg, 0.4)
-      border.color: Util.alpha(colBorder, 0.3)
+      color: "transparent"
+      border.color: Util.alpha(colBorder, 0.25)
       border.width: 1
 
-      // Banner Background Image
+      // 1) Dynamic Themed Gradient (always active, harmonizes with current theme colors)
+      Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+          orientation: Gradient.Horizontal
+          GradientStop { position: 0.0; color: Util.alpha(colAccent, 0.22) }
+          GradientStop { position: 0.45; color: Util.alpha(colAccent, 0.08) }
+          GradientStop { position: 1.0; color: Util.alpha(colForeground, 0.03) }
+        }
+      }
+
+      // 2) Banner Background Image (Custom -> AniList User Banner -> Top Watching Anime Fallback)
       Image {
         anchors.fill: parent
         source: root.activeBanner
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        opacity: 0.28
+        opacity: 0.32
         visible: root.activeBanner.length > 0
       }
 
-      // Soft Darkening Scrim Overlay for 100% text legibility
+      // 3) Soft Darkening Scrim Overlay for 100% text legibility
       Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0.04, 0.05, 0.07, root.activeBanner.length > 0 ? 0.52 : 0)
+        visible: root.activeBanner.length > 0
+        color: Qt.rgba(0.04, 0.05, 0.07, 0.45)
       }
 
       // Header Row: [Avatar] [User Name/Status] (----space----) [Settings] [✕]
