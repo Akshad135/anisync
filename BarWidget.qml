@@ -14,6 +14,8 @@ BarWidget {
   moduleName: "akshad135.anime-watcher"
 
   // ------------------------------------------------------------- Settings & State
+  property bool showAnime: true
+  property bool showManga: true
   property string aniListUser: "akshad"
   property string malUser: ""
   property bool notifyOnRelease: true
@@ -83,6 +85,8 @@ BarWidget {
     }
     try {
       var s = JSON.parse(raw)
+      if (s.showAnime !== undefined) root.showAnime = s.showAnime
+      if (s.showManga !== undefined) root.showManga = s.showManga
       if (s.aniListUser !== undefined) root.aniListUser = s.aniListUser
       if (s.malUser !== undefined) root.malUser = s.malUser
       if (s.notifyOnRelease !== undefined) root.notifyOnRelease = s.notifyOnRelease
@@ -93,6 +97,8 @@ BarWidget {
 
   function saveSettings() {
     var payload = {
+      showAnime: root.showAnime,
+      showManga: root.showManga,
       aniListUser: root.aniListUser,
       malUser: root.malUser,
       notifyOnRelease: root.notifyOnRelease,
@@ -103,7 +109,9 @@ BarWidget {
   }
 
   function updateSetting(key, val) {
-    if (key === "aniListUser") root.aniListUser = val
+    if (key === "showAnime") root.showAnime = val
+    else if (key === "showManga") root.showManga = val
+    else if (key === "aniListUser") root.aniListUser = val
     else if (key === "malUser") root.malUser = val
     else if (key === "notifyOnRelease") root.notifyOnRelease = val
     else if (key === "notifyManga") root.notifyManga = val
