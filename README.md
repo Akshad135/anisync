@@ -54,6 +54,19 @@ omarchy restart shell
 
 ---
 
+## Configuration
+
+Settings can be customized directly in the plugin drawer via the settings gear icon:
+- **Accounts:** Enter your public AniList and/or MyAnimeList username.
+- **Sections:** Toggle Anime and Manga view tabs.
+- **Alerts:** Enable or disable desktop notifications for new releases.
+- **Sync Frequency:** Set periodic refresh interval (`15m`, `30m`, `1h`, `2h`, or `Manual`).
+- **Custom Banner:** Specify a custom background banner URL or local image path.
+
+All preferences persist in `~/.local/state/omarchy/plugins/akshad135.anisync/settings.json`.
+
+---
+
 ## Screenshots
 
 | Watchlist & Schedule | Settings & Providers |
