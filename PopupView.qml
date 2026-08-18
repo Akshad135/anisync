@@ -30,16 +30,22 @@ Item {
 
   // Computed properties
   readonly property bool canSync: (root.aniListUser.trim().length > 0 || root.malUser.trim().length > 0)
-  readonly property var tabsModel: {
+  readonly property string displayUserName: root.aniListUser.trim().length > 0 
+    ? root.aniListUser.trim() 
+    : (root.malUser.trim().length > 0 ? root.malUser.trim() : "Anime Watcher")
+
+  // Main 3 panels: Anime, Manga, Explore
+  readonly property var mainTabsModel: {
     var list = []
     if (root.showAnime) list.push({ id: "anime", label: "Anime", icon: "󰝚" })
     if (root.showManga) list.push({ id: "manga", label: "Manga", icon: "󰂬" })
     list.push({ id: "explore", label: "Explore", icon: "󰍉" })
-    list.push({ id: "settings", label: "Settings", icon: "󰒓" })
     return list
   }
 
   property string activeTabId: "anime"
+  property string previousTabId: "anime"
+  property bool isSettingsOpen: false
 
   onShowAnimeChanged: {
     if (!root.showAnime && root.activeTabId === "anime") {
@@ -68,14 +74,15 @@ Item {
     anchors.fill: parent
     spacing: Style.space(8)
 
-    // ------------------------------------------------------------- Header
+    // ------------------------------------------------------------- Header: [User Icon] [User Name] (----space----) [Settings] [✕]
     RowLayout {
       Layout.fillWidth: true
       spacing: Style.space(8)
 
+      // User Icon
       Rectangle {
-        width: Style.space(26)
-        height: Style.space(26)
+        width: Style.space(28)
+        height: Style.space(28)
         radius: Style.cornerRadius
         color: Util.alpha(colAccent, 0.2)
 
@@ -88,16 +95,18 @@ Item {
         }
       }
 
+      // User Name + Status
       ColumnLayout {
-        Layout.fillWidth: true
         spacing: 0
 
         Text {
-          text: "Anime Watcher"
+          text: root.displayUserName
           font.family: root.fontFamily
           font.pixelSize: Style.font.subtitle
           font.bold: true
           color: colForeground
+          elide: Text.ElideRight
+          Layout.maximumWidth: Style.space(220)
         }
 
         Text {
@@ -108,10 +117,51 @@ Item {
         }
       }
 
+      // Space
+      Item {
+        Layout.fillWidth: true
+      }
+
+      // Settings Button (Next to user area, top-right)
+      Rectangle {
+        width: Style.space(28)
+        height: Style.space(28)
+        radius: Style.cornerRadius
+        color: root.isSettingsOpen 
+          ? Util.alpha(colAccent, 0.25) 
+          : (settingsHover.containsMouse ? colCardBg : "transparent")
+        border.color: root.isSettingsOpen ? colAccent : (settingsHover.containsMouse ? colBorder : "transparent")
+        border.width: 1
+
+        Text {
+          anchors.centerIn: parent
+          text: "󰒓"
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          color: root.isSettingsOpen ? colAccent : (settingsHover.containsMouse ? colForeground : colDim)
+        }
+
+        MouseArea {
+          id: settingsHover
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            if (root.isSettingsOpen) {
+              root.isSettingsOpen = false
+              root.activeTabId = root.previousTabId || "anime"
+            } else {
+              root.previousTabId = root.activeTabId
+              root.isSettingsOpen = true
+            }
+          }
+        }
+      }
+
       // Close Button
       Rectangle {
-        width: Style.space(26)
-        height: Style.space(26)
+        width: Style.space(28)
+        height: Style.space(28)
         radius: Style.cornerRadius
         color: closeHover.containsMouse ? colCardBg : "transparent"
         border.color: closeHover.containsMouse ? colBorder : "transparent"
@@ -137,22 +187,23 @@ Item {
       }
     }
 
-    // ------------------------------------------------------------- Tabs
+    // ------------------------------------------------------------- Main 3 Tabs: Anime, Manga, Explore
     RowLayout {
       Layout.fillWidth: true
       spacing: Style.space(4)
+      visible: !root.isSettingsOpen
 
       Repeater {
-        model: root.tabsModel
+        model: root.mainTabsModel
 
         delegate: Rectangle {
           Layout.fillWidth: true
           Layout.preferredHeight: Style.space(28)
           radius: Style.cornerRadius
-          color: root.activeTabId === modelData.id 
+          color: (!root.isSettingsOpen && root.activeTabId === modelData.id)
             ? Util.alpha(colAccent, 0.22) 
             : (tabMouse.containsMouse ? Util.alpha(colCardBg, 0.6) : "transparent")
-          border.color: root.activeTabId === modelData.id ? colAccent : "transparent"
+          border.color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? colAccent : "transparent"
           border.width: 1
 
           RowLayout {
@@ -163,15 +214,15 @@ Item {
               text: modelData.icon
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
-              color: root.activeTabId === modelData.id ? colAccent : (tabMouse.containsMouse ? colForeground : colDim)
+              color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? colAccent : (tabMouse.containsMouse ? colForeground : colDim)
             }
 
             Text {
               text: modelData.label
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
-              font.bold: root.activeTabId === modelData.id
-              color: root.activeTabId === modelData.id ? colForeground : (tabMouse.containsMouse ? colForeground : colDim)
+              font.bold: (!root.isSettingsOpen && root.activeTabId === modelData.id)
+              color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? colForeground : (tabMouse.containsMouse ? colForeground : colDim)
             }
           }
 
@@ -180,7 +231,45 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.activeTabId = modelData.id
+            onClicked: {
+              root.isSettingsOpen = false
+              root.activeTabId = modelData.id
+            }
+          }
+        }
+      }
+    }
+
+    // Settings Header Banner (when in settings)
+    RowLayout {
+      Layout.fillWidth: true
+      visible: root.isSettingsOpen
+      spacing: Style.space(6)
+
+      Text {
+        text: "⚙ Settings"
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.subtitle
+        font.bold: true
+        color: colForeground
+      }
+
+      Item { Layout.fillWidth: true }
+
+      Text {
+        text: "← Back"
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        color: backHover.containsMouse ? colAccent : colDim
+
+        MouseArea {
+          id: backHover
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: {
+            root.isSettingsOpen = false
+            root.activeTabId = root.previousTabId || "anime"
           }
         }
       }
@@ -193,11 +282,11 @@ Item {
       color: Util.alpha(colBorder, 0.5)
     }
 
-    // ------------------------------------------------------------- Tab Contents
+    // ------------------------------------------------------------- Panels Content
 
-    // ============================================================= ANIME TAB
+    // ============================================================= ANIME PANEL
     Item {
-      visible: root.activeTabId === "anime"
+      visible: !root.isSettingsOpen && root.activeTabId === "anime"
       Layout.fillWidth: true
       Layout.fillHeight: true
 
@@ -246,7 +335,7 @@ Item {
               }
             }
 
-            // Info
+            // Details
             ColumnLayout {
               Layout.fillWidth: true
               spacing: Style.space(2)
@@ -335,7 +424,7 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: root.aniListUser || root.malUser ? "No currently watching anime found" : "Set your account username in Settings"
+              text: root.aniListUser || root.malUser ? "No currently watching anime found" : "Set your username in Settings"
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               color: colDim
@@ -348,7 +437,7 @@ Item {
                 if (root.aniListUser || root.malUser) {
                   if (host && host.sync) host.sync()
                 } else {
-                  root.activeTabId = "settings"
+                  root.isSettingsOpen = true
                 }
               }
             }
@@ -357,9 +446,9 @@ Item {
       }
     }
 
-    // ============================================================= MANGA TAB
+    // ============================================================= MANGA PANEL
     Item {
-      visible: root.activeTabId === "manga"
+      visible: !root.isSettingsOpen && root.activeTabId === "manga"
       Layout.fillWidth: true
       Layout.fillHeight: true
 
@@ -492,9 +581,9 @@ Item {
       }
     }
 
-    // ============================================================= EXPLORE TAB
+    // ============================================================= EXPLORE PANEL
     Item {
-      visible: root.activeTabId === "explore"
+      visible: !root.isSettingsOpen && root.activeTabId === "explore"
       Layout.fillWidth: true
       Layout.fillHeight: true
 
@@ -670,9 +759,9 @@ Item {
       }
     }
 
-    // ============================================================= SETTINGS TAB
+    // ============================================================= SETTINGS PANEL
     Item {
-      visible: root.activeTabId === "settings"
+      visible: root.isSettingsOpen
       Layout.fillWidth: true
       Layout.fillHeight: true
 
@@ -686,7 +775,7 @@ Item {
           width: parent.width
           spacing: Style.space(10)
 
-          // Sections Visibility
+          // Display Sections
           Text {
             text: "Display Sections"
             font.family: root.fontFamily
