@@ -414,6 +414,12 @@ function parseMALMangaResponse(rawJson) {
   return list
 }
 
+function parseMALUserAvatar(html) {
+  if (!html || typeof html !== "string") return ""
+  var match = html.match(/<div class="user-image[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)="([^">]+)"/i)
+  return match ? match[1] : ""
+}
+
 function normalizeTitle(str) {
   if (!str) return ""
   return String(str).toLowerCase().replace(/[^a-z0-9]/g, "")
@@ -649,6 +655,7 @@ if (typeof module !== "undefined" && module.exports) {
     parseAniListResponse: parseAniListResponse,
     parseMALListResponse: parseMALListResponse,
     parseMALMangaResponse: parseMALMangaResponse,
+    parseMALUserAvatar: parseMALUserAvatar,
     normalizeTitle: normalizeTitle,
     mergeAnimeLists: mergeAnimeLists,
     mergeMangaLists: mergeMangaLists,

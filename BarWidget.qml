@@ -35,6 +35,8 @@ BarWidget {
   property string tickerText: "Anime"
   property int unseenCount: 0
   property string userAvatar: ""
+  property string aniAvatar: ""
+  property string malAvatar: ""
   property string userBanner: ""
   property string customBanner: ""
 
@@ -212,6 +214,22 @@ BarWidget {
   }
 
   Process {
+    id: malAvatarFetchProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var av = Logic.parseMALUserAvatar(String(text || ""))
+        if (av) {
+          root.malAvatar = av
+          if (!root.userAvatar) root.userAvatar = av
+        }
+      }
+    }
+  }
+
+  Process {
     id: searchProc
     running: false
     command: []
@@ -281,25 +299,34 @@ BarWidget {
       root.rawAniListManga = []
       root.upcomingList = []
       root.recentDrops = []
+      root.aniAvatar = ""
     }
 
     if (root.malUser) {
       malFetchProc.command = [
         "curl", "-fsS", "--max-time", "15",
-        "-A", "Mozilla/5.0",
+        "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/animelist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
       ]
       malFetchProc.running = true
 
       malMangaFetchProc.command = [
         "curl", "-fsS", "--max-time", "15",
-        "-A", "Mozilla/5.0",
+        "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/mangalist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
       ]
       malMangaFetchProc.running = true
+
+      malAvatarFetchProc.command = [
+        "curl", "-fsS", "--max-time", "15",
+        "-A", "Mozilla/5.0 (X11; Linux x86_64)",
+        "https://myanimelist.net/profile/" + encodeURIComponent(root.malUser)
+      ]
+      malAvatarFetchProc.running = true
     } else {
       root.rawMALAnime = []
       root.rawMALManga = []
+      root.malAvatar = ""
     }
   }
 
@@ -314,7 +341,10 @@ BarWidget {
     root.rawAniListManga = parsed.readingManga || []
     root.upcomingList = parsed.upcomingAnime || []
     root.recentDrops = parsed.recentDrops || []
-    if (parsed.userAvatar) root.userAvatar = parsed.userAvatar
+    if (parsed.userAvatar) {
+      root.aniAvatar = parsed.userAvatar
+      root.userAvatar = parsed.userAvatar
+    }
     if (parsed.userBanner) root.userBanner = parsed.userBanner
 
     // Check for newly dropped items that need desktop notifications

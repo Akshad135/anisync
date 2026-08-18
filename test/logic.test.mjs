@@ -207,3 +207,13 @@ test("mergeMangaLists cleanly unifies AniList + MAL manga reading lists", () => 
   assert.ok(unified.find(m => m.title === "Chainsaw Man"))
   assert.ok(unified.find(m => m.title === "Berserk"))
 })
+
+test("parseMALUserAvatar extracts user avatar URL from profile HTML", () => {
+  const sampleHtml = `
+    <div class="user-image mb8">
+      <img class="lazyload" data-src="https://cdn.myanimelist.net/s/common/userimages/c3f4dc4a-ef1f-48d2-970b-cd23a8cc37ad_225w?s=012c053fba954194fcef80b68f1e13c3">
+    </div>
+  `
+  const avatarUrl = Logic.parseMALUserAvatar(sampleHtml)
+  assert.equal(avatarUrl, "https://cdn.myanimelist.net/s/common/userimages/c3f4dc4a-ef1f-48d2-970b-cd23a8cc37ad_225w?s=012c053fba954194fcef80b68f1e13c3")
+})

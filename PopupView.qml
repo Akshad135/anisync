@@ -25,6 +25,8 @@ Item {
   property string aniListUser: host ? host.aniListUser : ""
   property string malUser: host ? host.malUser : ""
   property string userAvatar: host ? host.userAvatar : ""
+  property string aniAvatar: host ? host.aniAvatar : ""
+  property string malAvatar: host ? host.malAvatar : ""
   property string userBanner: host ? host.userBanner : ""
   property string customBanner: host ? host.customBanner : ""
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
@@ -42,10 +44,19 @@ Item {
   }
 
   // Computed properties
+  readonly property bool isDualAccount: (root.aniListUser.trim().length > 0 && root.malUser.trim().length > 0)
   readonly property bool canSync: (root.aniListUser.trim().length > 0 || root.malUser.trim().length > 0)
-  readonly property string displayUserName: root.aniListUser.trim().length > 0 
-    ? root.aniListUser.trim() 
-    : (root.malUser.trim().length > 0 ? root.malUser.trim() : "Anime Watcher")
+  readonly property string displayUserName: {
+    if (root.isDualAccount) {
+      if (root.aniListUser.trim().toLowerCase() === root.malUser.trim().toLowerCase()) {
+        return root.aniListUser.trim()
+      }
+      return root.aniListUser.trim() + " · " + root.malUser.trim()
+    }
+    if (root.aniListUser.trim().length > 0) return root.aniListUser.trim()
+    if (root.malUser.trim().length > 0) return root.malUser.trim()
+    return "Anime Watcher"
+  }
 
   readonly property string activeBanner: (root.customBanner && root.customBanner.trim().length > 0) 
     ? root.customBanner.trim() 
@@ -124,8 +135,79 @@ Item {
         anchors.rightMargin: Style.space(8)
         spacing: Style.space(8)
 
-        // User Avatar or Fallback Account Icon
+        // 1) DUAL OVERLAPPING AVATARS (if both accounts connected)
+        Item {
+          visible: root.isDualAccount
+          width: Style.space(46)
+          height: Style.space(32)
+
+          // AniList Bubble (Left)
+          Rectangle {
+            width: Style.space(28)
+            height: Style.space(28)
+            radius: width / 2
+            anchors.left: parent.left
+            anchors.top: parent.top
+            z: 2
+            clip: true
+            color: Util.alpha(colAccent, 0.2)
+            border.color: Util.alpha(colAccent, 0.7)
+            border.width: 1.5
+
+            Image {
+              anchors.fill: parent
+              source: root.aniAvatar || root.userAvatar
+              fillMode: Image.PreserveAspectCrop
+              visible: (root.aniAvatar.length > 0 || root.userAvatar.length > 0)
+              asynchronous: true
+            }
+
+            Text {
+              anchors.centerIn: parent
+              visible: !root.aniAvatar && !root.userAvatar
+              text: "󰚩"
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              color: colAccent
+            }
+          }
+
+          // MAL Bubble (Overlapping Right)
+          Rectangle {
+            width: Style.space(28)
+            height: Style.space(28)
+            radius: width / 2
+            anchors.left: parent.left
+            anchors.leftMargin: Style.space(16)
+            anchors.bottom: parent.bottom
+            z: 1
+            clip: true
+            color: Util.alpha("#2e51a2", 0.3)
+            border.color: Util.alpha(colForeground, 0.35)
+            border.width: 1.5
+
+            Image {
+              anchors.fill: parent
+              source: root.malAvatar
+              fillMode: Image.PreserveAspectCrop
+              visible: root.malAvatar.length > 0
+              asynchronous: true
+            }
+
+            Text {
+              anchors.centerIn: parent
+              visible: !root.malAvatar || root.malAvatar.length === 0
+              text: "󰒓"
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              color: colForeground
+            }
+          }
+        }
+
+        // 2) SINGLE AVATAR (if single account or no account)
         Rectangle {
+          visible: !root.isDualAccount
           width: Style.space(32)
           height: Style.space(32)
           radius: width / 2
@@ -145,7 +227,7 @@ Item {
           Text {
             anchors.centerIn: parent
             visible: !root.userAvatar || root.userAvatar.length === 0
-            text: "󰀉"
+            text: root.malUser.length > 0 ? "󰒓" : "󰀉"
             font.family: root.fontFamily
             font.pixelSize: Style.font.subtitle
             color: colAccent
@@ -156,18 +238,47 @@ Item {
         ColumnLayout {
           spacing: 0
 
-          Text {
-            text: root.displayUserName
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
-            color: colForeground
-            elide: Text.ElideRight
-            Layout.maximumWidth: Style.space(220)
+          RowLayout {
+            spacing: Style.space(4)
+
+            Text {
+              text: root.displayUserName
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.subtitle
+              font.bold: true
+              color: colForeground
+              elide: Text.ElideRight
+              Layout.maximumWidth: root.isDualAccount ? Style.space(160) : Style.space(220)
+            }
+
+            // Dual Account Tag
+            Rectangle {
+              visible: root.isDualAccount
+              height: Style.space(16)
+              width: dualTagText.implicitWidth + Style.space(8)
+              radius: 4
+              color: Util.alpha(colAccent, 0.15)
+              border.color: Util.alpha(colAccent, 0.4)
+              border.width: 1
+
+              Text {
+                id: dualTagText
+                anchors.centerIn: parent
+                text: "AL + MAL"
+                font.family: root.fontFamily
+                font.pixelSize: 9
+                font.bold: true
+                color: colAccent
+              }
+            }
           }
 
           Text {
-            text: isFetching ? "Syncing..." : (lastSyncText.length > 0 ? ("Updated " + lastSyncText) : "Ready")
+            text: isFetching 
+              ? "Syncing..." 
+              : (lastSyncText.length > 0 
+                  ? (root.isDualAccount ? ("Synced: AniList + MAL · " + lastSyncText) : ("Updated " + lastSyncText))
+                  : "Ready")
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
             color: isFetching ? colAccent : colDim
