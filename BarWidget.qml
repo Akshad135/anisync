@@ -404,7 +404,7 @@ BarWidget {
     var desc = "Now streaming! Click to open."
     var cmd = [
       "omarchy-notification-send",
-      "-g", "󰚩",
+      "-g", "󰵪",
       "-u", "normal",
       "--app-name", "Anime Watcher"
     ]
@@ -422,7 +422,7 @@ BarWidget {
   function testNotification() {
     notifyProc.command = [
       "omarchy-notification-send",
-      "-g", "󰚩",
+      "-g", "󰵪",
       "-u", "normal",
       "--app-name", "Anime Watcher",
       "🎌 Anime Watcher Connected!",
@@ -433,9 +433,7 @@ BarWidget {
 
   readonly property string barIcon: {
     if (root.unseenCount > 0) return "󱅫 "
-    if (root.aniListUser.length > 0 && root.malUser.length > 0) return "󰿎 "
-    if (root.malUser.length > 0 && root.aniListUser.length === 0) return "󰒓 "
-    return "󰚩 "
+    return "󰵪 "
   }
 
   function updateTicker() {
