@@ -29,6 +29,7 @@ Item {
 
   // UI state
   property int currentTab: 0 // 0: Upcoming, 1: Drops, 2: Watchlist, 3: Search, 4: Settings
+  property int watchlistSubTab: 0 // 0: Anime, 1: Manga
   property string searchInputText: ""
 
   readonly property color colForeground: Color.foreground
@@ -39,8 +40,8 @@ Item {
   readonly property color colBorder: Style.normalBorderFor(Color.foreground, Color.accent)
   readonly property string fontFamily: host && host.bar ? host.bar.fontFamily : Style.font.family
 
-  implicitWidth: Style.space(420)
-  implicitHeight: Style.space(480)
+  implicitWidth: Style.space(440)
+  implicitHeight: Style.space(500)
 
   ColumnLayout {
     anchors.fill: parent
@@ -399,7 +400,7 @@ Item {
 
               Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: root.aniListUser ? "No upcoming episodes in your list" : "Set your AniList username in Settings"
+                text: root.aniListUser ? "No upcoming episodes found in your watchlist" : "Enter your AniList username in Settings"
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
                 color: colDim
@@ -654,123 +655,304 @@ Item {
       Item {
         id: tabWatchlist
 
-        ListView {
-          id: watchListView
+        ColumnLayout {
           anchors.fill: parent
-          clip: true
           spacing: Style.space(6)
-          model: root.watchingList
 
-          delegate: Rectangle {
-            id: watchCard
-            width: watchListView.width
-            height: Style.space(56)
-            radius: Style.cornerRadius
-            color: watchMouse.containsMouse ? colCardBg : Util.alpha(colCardBg, 0.4)
-            border.color: watchMouse.containsMouse ? colAccent : colBorder
-            border.width: 1
+          // Sub-Tab Switcher (Anime / Manga)
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(6)
 
-            RowLayout {
-              anchors.fill: parent
-              anchors.margins: Style.space(6)
-              spacing: Style.space(8)
-
-              // Cover
-              Rectangle {
-                width: Style.space(32)
-                height: Style.space(44)
-                radius: 4
-                clip: true
-                color: Qt.darker(colCardBg, 1.3)
-
-                Image {
-                  anchors.fill: parent
-                  source: modelData.cover || ""
-                  fillMode: Image.PreserveAspectCrop
-                  asynchronous: true
-                }
-              }
-
-              // Details
-              ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Style.space(2)
-
-                Text {
-                  Layout.fillWidth: true
-                  text: modelData.title
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                  font.bold: true
-                  color: colForeground
-                  elide: Text.ElideRight
-                }
-
-                RowLayout {
-                  Layout.fillWidth: true
-                  spacing: Style.space(6)
-
-                  Text {
-                    text: "Progress: " + modelData.progress + (modelData.totalEpisodes ? (" / " + modelData.totalEpisodes) : " eps")
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    color: colAccent
-                  }
-
-                  Text {
-                    text: modelData.score > 0 ? ("★ " + modelData.score) : ""
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.caption
-                    color: "#f5c518"
-                    visible: modelData.score > 0
-                  }
-                }
-              }
+            Rectangle {
+              Layout.fillWidth: true
+              Layout.preferredHeight: Style.space(24)
+              radius: Style.cornerRadius
+              color: root.watchlistSubTab === 0 ? Util.alpha(colAccent, 0.2) : Util.alpha(colCardBg, 0.5)
+              border.color: root.watchlistSubTab === 0 ? colAccent : "transparent"
+              border.width: 1
 
               Text {
-                text: "󰌹"
+                anchors.centerIn: parent
+                text: "Anime (" + root.watchingList.length + ")"
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                color: watchMouse.containsMouse ? colAccent : colDim
+                font.pixelSize: Style.font.caption
+                font.bold: root.watchlistSubTab === 0
+                color: root.watchlistSubTab === 0 ? colForeground : colDim
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.watchlistSubTab = 0
               }
             }
 
-            MouseArea {
-              id: watchMouse
+            Rectangle {
+              Layout.fillWidth: true
+              Layout.preferredHeight: Style.space(24)
+              radius: Style.cornerRadius
+              color: root.watchlistSubTab === 1 ? Util.alpha(colAccent, 0.2) : Util.alpha(colCardBg, 0.5)
+              border.color: root.watchlistSubTab === 1 ? colAccent : "transparent"
+              border.width: 1
+
+              Text {
+                anchors.centerIn: parent
+                text: "Manga (" + root.readingManga.length + ")"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: root.watchlistSubTab === 1
+                color: root.watchlistSubTab === 1 ? colForeground : colDim
+              }
+
+              MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.watchlistSubTab = 1
+              }
+            }
+          }
+
+          // Anime List View
+          ListView {
+            id: animeListView
+            visible: root.watchlistSubTab === 0
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: Style.space(6)
+            model: root.watchingList
+
+            delegate: Rectangle {
+              id: watchCard
+              width: animeListView.width
+              height: Style.space(56)
+              radius: Style.cornerRadius
+              color: watchMouse.containsMouse ? colCardBg : Util.alpha(colCardBg, 0.4)
+              border.color: watchMouse.containsMouse ? colAccent : colBorder
+              border.width: 1
+
+              RowLayout {
+                anchors.fill: parent
+                anchors.margins: Style.space(6)
+                spacing: Style.space(8)
+
+                Rectangle {
+                  width: Style.space(32)
+                  height: Style.space(44)
+                  radius: 4
+                  clip: true
+                  color: Qt.darker(colCardBg, 1.3)
+
+                  Image {
+                    anchors.fill: parent
+                    source: modelData.cover || ""
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                  }
+                }
+
+                ColumnLayout {
+                  Layout.fillWidth: true
+                  spacing: Style.space(2)
+
+                  Text {
+                    Layout.fillWidth: true
+                    text: modelData.title
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    font.bold: true
+                    color: colForeground
+                    elide: Text.ElideRight
+                  }
+
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.space(6)
+
+                    Text {
+                      text: "Progress: " + modelData.progress + (modelData.totalEpisodes ? (" / " + modelData.totalEpisodes) : " eps")
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      color: colAccent
+                    }
+
+                    Text {
+                      text: modelData.score > 0 ? ("★ " + modelData.score) : ""
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      color: "#f5c518"
+                      visible: modelData.score > 0
+                    }
+                  }
+                }
+
+                Text {
+                  text: "󰌹"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  color: watchMouse.containsMouse ? colAccent : colDim
+                }
+              }
+
+              MouseArea {
+                id: watchMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  if (modelData.siteUrl && host && host.openUrl) {
+                    host.openUrl(modelData.siteUrl)
+                  }
+                }
+              }
+            }
+
+            Item {
               anchors.fill: parent
-              hoverEnabled: true
-              cursorShape: Qt.PointingHandCursor
-              onClicked: {
-                if (modelData.siteUrl && host && host.openUrl) {
-                  host.openUrl(modelData.siteUrl)
+              visible: animeListView.count === 0 && !root.isFetching
+
+              ColumnLayout {
+                anchors.centerIn: parent
+                spacing: Style.space(6)
+
+                Text {
+                  Layout.alignment: Qt.AlignHCenter
+                  text: "󰝚"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.displayLarge
+                  color: colBorder
+                }
+
+                Text {
+                  Layout.alignment: Qt.AlignHCenter
+                  text: "No watching anime found"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  color: colDim
                 }
               }
             }
           }
 
-          // Empty state
-          Item {
-            anchors.fill: parent
-            visible: watchListView.count === 0 && !root.isFetching
+          // Manga List View
+          ListView {
+            id: mangaListView
+            visible: root.watchlistSubTab === 1
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            clip: true
+            spacing: Style.space(6)
+            model: root.readingManga
 
-            ColumnLayout {
-              anchors.centerIn: parent
-              spacing: Style.space(6)
+            delegate: Rectangle {
+              id: mangaCard
+              width: mangaListView.width
+              height: Style.space(56)
+              radius: Style.cornerRadius
+              color: mangaMouse.containsMouse ? colCardBg : Util.alpha(colCardBg, 0.4)
+              border.color: mangaMouse.containsMouse ? colAccent : colBorder
+              border.width: 1
 
-              Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: "󰝚"
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.displayLarge
-                color: colBorder
+              RowLayout {
+                anchors.fill: parent
+                anchors.margins: Style.space(6)
+                spacing: Style.space(8)
+
+                Rectangle {
+                  width: Style.space(32)
+                  height: Style.space(44)
+                  radius: 4
+                  clip: true
+                  color: Qt.darker(colCardBg, 1.3)
+
+                  Image {
+                    anchors.fill: parent
+                    source: modelData.cover || ""
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                  }
+                }
+
+                ColumnLayout {
+                  Layout.fillWidth: true
+                  spacing: Style.space(2)
+
+                  Text {
+                    Layout.fillWidth: true
+                    text: modelData.title
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    font.bold: true
+                    color: colForeground
+                    elide: Text.ElideRight
+                  }
+
+                  RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Style.space(6)
+
+                    Text {
+                      text: "Progress: Ch. " + modelData.progress + (modelData.totalChapters ? (" / " + modelData.totalChapters) : "")
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      color: colAccent
+                    }
+
+                    Text {
+                      text: modelData.score > 0 ? ("★ " + modelData.score) : ""
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      color: "#f5c518"
+                      visible: modelData.score > 0
+                    }
+                  }
+                }
+
+                Text {
+                  text: "󰌹"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  color: mangaMouse.containsMouse ? colAccent : colDim
+                }
               }
 
-              Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: "No currently watching anime found"
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                color: colDim
+              MouseArea {
+                id: mangaMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                  if (modelData.siteUrl && host && host.openUrl) {
+                    host.openUrl(modelData.siteUrl)
+                  }
+                }
+              }
+            }
+
+            Item {
+              anchors.fill: parent
+              visible: mangaListView.count === 0 && !root.isFetching
+
+              ColumnLayout {
+                anchors.centerIn: parent
+                spacing: Style.space(6)
+
+                Text {
+                  Layout.alignment: Qt.AlignHCenter
+                  text: "󰝚"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.displayLarge
+                  color: colBorder
+                }
+
+                Text {
+                  Layout.alignment: Qt.AlignHCenter
+                  text: "No reading manga found"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  color: colDim
+                }
               }
             }
           }
@@ -785,80 +967,39 @@ Item {
           anchors.fill: parent
           spacing: Style.space(6)
 
-          // Search Input Bar
-          Rectangle {
+          // Search Native TextField
+          TextField {
+            id: searchField
             Layout.fillWidth: true
-            height: Style.space(32)
-            radius: Style.cornerRadius
-            color: colCardBg
-            border.color: searchField.activeFocus ? colAccent : colBorder
-            border.width: 1
+            placeholderText: "Search anime or manga (e.g. Frieren, Solo Leveling)..."
+            activeFocusOnPress: true
 
-            RowLayout {
-              anchors.fill: parent
-              anchors.leftMargin: Style.space(8)
-              anchors.rightMargin: Style.space(8)
-              spacing: Style.space(6)
+            onTextEdited: {
+              root.searchInputText = text
+              searchDebounce.restart()
+            }
 
-              Text {
-                text: "󰍉"
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
-                color: colDim
-              }
+            onAccepted: {
+              if (host && host.search) host.search(text.trim())
+            }
 
-              TextInput {
-                id: searchField
-                Layout.fillWidth: true
-                text: root.searchInputText
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.bodySmall
-                color: colForeground
-                selectByMouse: true
-
-                Text {
-                  anchors.fill: parent
-                  text: "Search anime or manga (e.g. Frieren, Solo Leveling)..."
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.bodySmall
-                  color: colMuted
-                  visible: !searchField.text && !searchField.activeFocus
+            Keys.priority: Keys.BeforeItem
+            Keys.onPressed: function(event) {
+              if (event.key === Qt.Key_Escape) {
+                if (text.length > 0) {
+                  text = ""
+                  if (host && host.clearSearch) host.clearSearch()
+                } else if (host && host.close) {
+                  host.close()
                 }
-
-                onAccepted: {
-                  if (host && host.search) host.search(text)
-                }
-
-                onTextChanged: {
-                  root.searchInputText = text
-                  searchDebounce.restart()
-                }
-              }
-
-              Text {
-                visible: searchField.text.length > 0
-                text: "✕"
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                color: clearSearchHover.containsMouse ? colForeground : colDim
-
-                MouseArea {
-                  id: clearSearchHover
-                  anchors.fill: parent
-                  hoverEnabled: true
-                  cursorShape: Qt.PointingHandCursor
-                  onClicked: {
-                    searchField.text = ""
-                    if (host && host.clearSearch) host.clearSearch()
-                  }
-                }
+                event.accepted = true
               }
             }
           }
 
           Timer {
             id: searchDebounce
-            interval: 500
+            interval: 400
             repeat: false
             onTriggered: {
               if (searchField.text.trim().length >= 2 && host && host.search) {
@@ -890,7 +1031,6 @@ Item {
                 anchors.margins: Style.space(6)
                 spacing: Style.space(8)
 
-                // Cover
                 Rectangle {
                   width: Style.space(34)
                   height: Style.space(48)
@@ -1010,9 +1150,8 @@ Item {
           ColumnLayout {
             id: settingsCol
             width: parent.width
-            spacing: Style.space(12)
+            spacing: Style.space(10)
 
-            // Account Sync Section
             Text {
               text: "Account Sync"
               font.family: root.fontFamily
@@ -1024,7 +1163,7 @@ Item {
             // AniList Username
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(4)
+              spacing: Style.space(3)
 
               Text {
                 text: "AniList Username"
@@ -1033,32 +1172,15 @@ Item {
                 color: colDim
               }
 
-              Rectangle {
+              TextField {
+                id: aniInput
                 Layout.fillWidth: true
-                height: Style.space(32)
-                radius: Style.cornerRadius
-                color: colCardBg
-                border.color: aniInput.activeFocus ? colAccent : colBorder
-                border.width: 1
+                text: root.aniListUser
+                placeholderText: "Enter AniList username (e.g. akshad)"
+                activeFocusOnPress: true
 
-                RowLayout {
-                  anchors.fill: parent
-                  anchors.leftMargin: Style.space(8)
-                  anchors.rightMargin: Style.space(8)
-
-                  TextInput {
-                    id: aniInput
-                    Layout.fillWidth: true
-                    text: root.aniListUser
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                    color: colForeground
-                    selectByMouse: true
-
-                    onEditingFinished: {
-                      if (host && host.updateSetting) host.updateSetting("aniListUser", text.trim())
-                    }
-                  }
+                onTextEdited: {
+                  if (host && host.updateSetting) host.updateSetting("aniListUser", text.trim())
                 }
               }
             }
@@ -1066,7 +1188,7 @@ Item {
             // MyAnimeList Username
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(4)
+              spacing: Style.space(3)
 
               Text {
                 text: "MyAnimeList (MAL) Username (Optional)"
@@ -1075,32 +1197,15 @@ Item {
                 color: colDim
               }
 
-              Rectangle {
+              TextField {
+                id: malInput
                 Layout.fillWidth: true
-                height: Style.space(32)
-                radius: Style.cornerRadius
-                color: colCardBg
-                border.color: malInput.activeFocus ? colAccent : colBorder
-                border.width: 1
+                text: root.malUser
+                placeholderText: "Enter MAL username (optional)"
+                activeFocusOnPress: true
 
-                RowLayout {
-                  anchors.fill: parent
-                  anchors.leftMargin: Style.space(8)
-                  anchors.rightMargin: Style.space(8)
-
-                  TextInput {
-                    id: malInput
-                    Layout.fillWidth: true
-                    text: root.malUser
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.bodySmall
-                    color: colForeground
-                    selectByMouse: true
-
-                    onEditingFinished: {
-                      if (host && host.updateSetting) host.updateSetting("malUser", text.trim())
-                    }
-                  }
+                onTextEdited: {
+                  if (host && host.updateSetting) host.updateSetting("malUser", text.trim())
                 }
               }
             }
@@ -1268,7 +1373,7 @@ Item {
                   }
 
                   Text {
-                    text: "Save & Sync Now"
+                    text: "Save & Sync"
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                     font.bold: true

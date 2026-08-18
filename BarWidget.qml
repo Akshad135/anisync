@@ -30,7 +30,7 @@ BarWidget {
   property bool isFetching: false
   property bool isSearching: false
   property string lastSyncText: ""
-  property string tickerText: ""
+  property string tickerText: "Anime"
   property int unseenCount: 0
 
   // Popup controller
@@ -370,48 +370,19 @@ BarWidget {
   // ------------------------------------------------------------- Top Bar UI
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
+  visible: button.visible
 
-  BarIconButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    slotSize: Style.bar.statusSlot
+    text: (root.unseenCount > 0 ? "󱅫 " : "󰚩 ") + (root.tickerText || "Anime")
+    active: root.unseenCount > 0
+    useActiveColor: true
+    activeColor: colAccent
     tooltipText: root.unseenCount > 0 ? (root.unseenCount + " new episode(s) available") : (root.tickerText ? root.tickerText : "Anime Watcher")
 
-    RowLayout {
-      anchors.centerIn: parent
-      spacing: Style.space(4)
-
-      Text {
-        text: root.unseenCount > 0 ? "󱅫" : "󰚩"
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        color: root.unseenCount > 0 ? colAccent : (button.hovered ? colForeground : colDim)
-      }
-
-      Text {
-        text: root.tickerText || "Anime"
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        font.bold: root.unseenCount > 0
-        color: root.unseenCount > 0 ? colForeground : (button.hovered ? colForeground : colDim)
-        visible: (root.tickerText || "").length > 0
-        elide: Text.ElideRight
-        Layout.maximumWidth: Style.space(160)
-      }
-
-      // Unseen Dot Badge
-      Rectangle {
-        visible: root.unseenCount > 0
-        width: Style.space(6)
-        height: Style.space(6)
-        radius: 3
-        color: colAccent
-      }
-    }
-
     onPressed: function(b) {
-      if (!root.bar) return
       if (b === Qt.RightButton) {
         root.sync()
       } else {
@@ -425,9 +396,10 @@ BarWidget {
     id: popup
     anchorItem: button
     bar: root.bar
+    owner: root
     open: root.popupOpen
-    contentWidth: Style.space(420)
-    contentHeight: Style.space(480)
+    contentWidth: popup.fittedContentWidth(Style.space(440))
+    contentHeight: popup.cappedContentHeight(Style.space(500))
 
     onOpenChanged: {
       if (root.popupOpen !== popup.open) {
