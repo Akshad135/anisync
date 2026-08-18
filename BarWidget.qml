@@ -208,16 +208,14 @@ BarWidget {
     command: []
   }
 
-  Process {
-    id: openUrlProc
-    running: false
-    command: []
-  }
-
   function openUrl(url) {
     if (!url) return
-    openUrlProc.command = ["xdg-open", url]
-    openUrlProc.running = true
+    Quickshell.execDetached(["xdg-open", String(url)])
+  }
+
+  function copyUrl(url) {
+    if (!url) return
+    Quickshell.execDetached(["wl-copy", String(url)])
   }
 
   function sync() {

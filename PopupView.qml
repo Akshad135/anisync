@@ -61,14 +61,14 @@ Item {
 
   readonly property color colForeground: Color.foreground
   readonly property color colAccent: Color.accent
-  readonly property color colDim: Qt.darker(Color.foreground, 1.45)
-  readonly property color colMuted: Qt.darker(Color.foreground, 1.85)
+  readonly property color colDim: Qt.darker(Color.foreground, 1.4)
+  readonly property color colMuted: Qt.darker(Color.foreground, 1.7)
   readonly property color colCardBg: Style.normalFillFor(Color.foreground, Color.accent)
   readonly property color colBorder: Style.normalBorderFor(Color.foreground, Color.accent)
   readonly property string fontFamily: host && host.bar ? host.bar.fontFamily : Style.font.family
 
-  implicitWidth: Style.space(420)
-  implicitHeight: Style.space(480)
+  implicitWidth: Style.space(430)
+  implicitHeight: Style.space(490)
 
   ColumnLayout {
     anchors.fill: parent
@@ -84,7 +84,7 @@ Item {
         width: Style.space(28)
         height: Style.space(28)
         radius: Style.cornerRadius
-        color: Util.alpha(colAccent, 0.2)
+        color: Util.alpha(colAccent, 0.18)
 
         Text {
           anchors.centerIn: parent
@@ -129,7 +129,7 @@ Item {
         radius: Style.cornerRadius
         color: root.isSettingsOpen 
           ? Util.alpha(colAccent, 0.25) 
-          : (settingsHover.containsMouse ? colCardBg : "transparent")
+          : (settingsHover.containsMouse ? Util.alpha(colForeground, 0.1) : "transparent")
         border.color: root.isSettingsOpen ? colAccent : (settingsHover.containsMouse ? colBorder : "transparent")
         border.width: 1
 
@@ -163,7 +163,7 @@ Item {
         width: Style.space(28)
         height: Style.space(28)
         radius: Style.cornerRadius
-        color: closeHover.containsMouse ? colCardBg : "transparent"
+        color: closeHover.containsMouse ? Util.alpha(colForeground, 0.1) : "transparent"
         border.color: closeHover.containsMouse ? colBorder : "transparent"
         border.width: 1
 
@@ -187,53 +187,59 @@ Item {
       }
     }
 
-    // ------------------------------------------------------------- Main 3 Tabs: Anime, Manga, Explore
-    RowLayout {
+    // ------------------------------------------------------------- Segmented Tabs Bar: Anime, Manga, Explore
+    Rectangle {
       Layout.fillWidth: true
-      spacing: Style.space(4)
+      Layout.preferredHeight: Style.space(32)
+      radius: Style.cornerRadius
+      color: Util.alpha(colForeground, 0.06)
       visible: !root.isSettingsOpen
 
-      Repeater {
-        model: root.mainTabsModel
+      RowLayout {
+        anchors.fill: parent
+        anchors.margins: Style.space(3)
+        spacing: Style.space(3)
 
-        delegate: Rectangle {
-          Layout.fillWidth: true
-          Layout.preferredHeight: Style.space(28)
-          radius: Style.cornerRadius
-          color: (!root.isSettingsOpen && root.activeTabId === modelData.id)
-            ? Util.alpha(colAccent, 0.22) 
-            : (tabMouse.containsMouse ? Util.alpha(colCardBg, 0.6) : "transparent")
-          border.color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? colAccent : "transparent"
-          border.width: 1
+        Repeater {
+          model: root.mainTabsModel
 
-          RowLayout {
-            anchors.centerIn: parent
-            spacing: Style.space(4)
+          delegate: Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            radius: Style.cornerRadius - 1
+            color: (!root.isSettingsOpen && root.activeTabId === modelData.id)
+              ? colAccent
+              : (tabMouse.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
 
-            Text {
-              text: modelData.icon
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? colAccent : (tabMouse.containsMouse ? colForeground : colDim)
+            RowLayout {
+              anchors.centerIn: parent
+              spacing: Style.space(6)
+
+              Text {
+                text: modelData.icon
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? "#12131a" : (tabMouse.containsMouse ? colForeground : colDim)
+              }
+
+              Text {
+                text: modelData.label
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                font.bold: (!root.isSettingsOpen && root.activeTabId === modelData.id)
+                color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? "#12131a" : (tabMouse.containsMouse ? colForeground : colDim)
+              }
             }
 
-            Text {
-              text: modelData.label
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: (!root.isSettingsOpen && root.activeTabId === modelData.id)
-              color: (!root.isSettingsOpen && root.activeTabId === modelData.id) ? colForeground : (tabMouse.containsMouse ? colForeground : colDim)
-            }
-          }
-
-          MouseArea {
-            id: tabMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-              root.isSettingsOpen = false
-              root.activeTabId = modelData.id
+            MouseArea {
+              id: tabMouse
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: {
+                root.isSettingsOpen = false
+                root.activeTabId = modelData.id
+              }
             }
           }
         }
@@ -256,11 +262,21 @@ Item {
 
       Item { Layout.fillWidth: true }
 
-      Text {
-        text: "← Back"
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        color: backHover.containsMouse ? colAccent : colDim
+      Rectangle {
+        Layout.preferredHeight: Style.space(24)
+        Layout.preferredWidth: backText.implicitWidth + 16
+        radius: Style.cornerRadius
+        color: backHover.containsMouse ? Util.alpha(colForeground, 0.1) : "transparent"
+
+        Text {
+          id: backText
+          anchors.centerIn: parent
+          text: "← Back"
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          font.bold: true
+          color: backHover.containsMouse ? colAccent : colDim
+        }
 
         MouseArea {
           id: backHover
@@ -279,7 +295,7 @@ Item {
     Rectangle {
       Layout.fillWidth: true
       height: 1
-      color: Util.alpha(colBorder, 0.5)
+      color: Util.alpha(colBorder, 0.4)
     }
 
     // ------------------------------------------------------------- Panels Content
@@ -294,17 +310,24 @@ Item {
         id: animeListView
         anchors.fill: parent
         clip: true
-        spacing: Style.space(6)
+        spacing: Style.space(4)
         model: root.watchingList
 
         delegate: Rectangle {
           id: animeCard
           width: animeListView.width
-          height: modelData.nextEpisode ? Style.space(64) : Style.space(56)
+          height: modelData.nextEpisode ? Style.space(62) : Style.space(54)
           radius: Style.cornerRadius
-          color: animeMouse.containsMouse ? colCardBg : Util.alpha(colCardBg, 0.4)
-          border.color: animeMouse.containsMouse ? colAccent : colBorder
+          color: animeCardMouse.containsMouse ? Util.alpha(colAccent, 0.12) : "transparent"
+          border.color: animeCardMouse.containsMouse ? Util.alpha(colAccent, 0.3) : "transparent"
           border.width: 1
+
+          property bool copied: false
+          Timer {
+            id: animeCopyTimer
+            interval: 1500
+            onTriggered: animeCard.copied = false
+          }
 
           RowLayout {
             anchors.fill: parent
@@ -314,10 +337,10 @@ Item {
             // Cover Image
             Rectangle {
               width: Style.space(34)
-              height: modelData.nextEpisode ? Style.space(50) : Style.space(44)
+              height: modelData.nextEpisode ? Style.space(48) : Style.space(42)
               radius: 4
               clip: true
-              color: Qt.darker(colCardBg, 1.3)
+              color: Util.alpha(colForeground, 0.08)
 
               Image {
                 anchors.fill: parent
@@ -335,10 +358,10 @@ Item {
               }
             }
 
-            // Details
+            // Info
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(2)
+              spacing: Style.space(1)
 
               Text {
                 Layout.fillWidth: true
@@ -359,6 +382,7 @@ Item {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   color: colAccent
+                  font.bold: true
                 }
 
                 Text {
@@ -373,7 +397,7 @@ Item {
               // Next Airing Info
               RowLayout {
                 visible: modelData.nextEpisode !== null && modelData.nextEpisode !== undefined
-                spacing: Style.space(6)
+                spacing: Style.space(4)
 
                 Text {
                   text: "Next: Ep " + modelData.nextEpisode + " " + Logic.formatCountdown(modelData.airingAt)
@@ -384,17 +408,45 @@ Item {
               }
             }
 
-            Text {
-              text: "󰌹"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              color: animeMouse.containsMouse ? colAccent : colDim
+            // Copy Link Button
+            Rectangle {
+              width: Style.space(28)
+              height: Style.space(28)
+              radius: Style.cornerRadius
+              color: animeCopyHover.containsMouse ? Util.alpha(colAccent, 0.2) : "transparent"
+              border.color: animeCopyHover.containsMouse ? Util.alpha(colAccent, 0.4) : "transparent"
+              border.width: 1
+
+              Text {
+                anchors.centerIn: parent
+                text: animeCard.copied ? "✓" : "󰌹"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                color: animeCard.copied ? colAccent : (animeCopyHover.containsMouse ? colForeground : colDim)
+              }
+
+              MouseArea {
+                id: animeCopyHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: function(mouse) {
+                  mouse.accepted = true
+                  if (modelData.siteUrl && host && host.copyUrl) {
+                    host.copyUrl(modelData.siteUrl)
+                    animeCard.copied = true
+                    animeCopyTimer.restart()
+                  }
+                }
+              }
             }
           }
 
+          // Card Click (Opens in Browser)
           MouseArea {
-            id: animeMouse
+            id: animeCardMouse
             anchors.fill: parent
+            z: -1
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
@@ -456,17 +508,24 @@ Item {
         id: mangaListView
         anchors.fill: parent
         clip: true
-        spacing: Style.space(6)
+        spacing: Style.space(4)
         model: root.readingManga
 
         delegate: Rectangle {
           id: mangaCard
           width: mangaListView.width
-          height: Style.space(56)
+          height: Style.space(54)
           radius: Style.cornerRadius
-          color: mangaMouse.containsMouse ? colCardBg : Util.alpha(colCardBg, 0.4)
-          border.color: mangaMouse.containsMouse ? colAccent : colBorder
+          color: mangaCardMouse.containsMouse ? Util.alpha(colAccent, 0.12) : "transparent"
+          border.color: mangaCardMouse.containsMouse ? Util.alpha(colAccent, 0.3) : "transparent"
           border.width: 1
+
+          property bool copied: false
+          Timer {
+            id: mangaCopyTimer
+            interval: 1500
+            onTriggered: mangaCard.copied = false
+          }
 
           RowLayout {
             anchors.fill: parent
@@ -475,10 +534,10 @@ Item {
 
             Rectangle {
               width: Style.space(34)
-              height: Style.space(44)
+              height: Style.space(42)
               radius: 4
               clip: true
-              color: Qt.darker(colCardBg, 1.3)
+              color: Util.alpha(colForeground, 0.08)
 
               Image {
                 anchors.fill: parent
@@ -498,7 +557,7 @@ Item {
 
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(2)
+              spacing: Style.space(1)
 
               Text {
                 Layout.fillWidth: true
@@ -519,6 +578,7 @@ Item {
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   color: colAccent
+                  font.bold: true
                 }
 
                 Text {
@@ -531,17 +591,45 @@ Item {
               }
             }
 
-            Text {
-              text: "󰌹"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              color: mangaMouse.containsMouse ? colAccent : colDim
+            // Copy Link Button
+            Rectangle {
+              width: Style.space(28)
+              height: Style.space(28)
+              radius: Style.cornerRadius
+              color: mangaCopyHover.containsMouse ? Util.alpha(colAccent, 0.2) : "transparent"
+              border.color: mangaCopyHover.containsMouse ? Util.alpha(colAccent, 0.4) : "transparent"
+              border.width: 1
+
+              Text {
+                anchors.centerIn: parent
+                text: mangaCard.copied ? "✓" : "󰌹"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                color: mangaCard.copied ? colAccent : (mangaCopyHover.containsMouse ? colForeground : colDim)
+              }
+
+              MouseArea {
+                id: mangaCopyHover
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: function(mouse) {
+                  mouse.accepted = true
+                  if (modelData.siteUrl && host && host.copyUrl) {
+                    host.copyUrl(modelData.siteUrl)
+                    mangaCard.copied = true
+                    mangaCopyTimer.restart()
+                  }
+                }
+              }
             }
           }
 
+          // Card Click (Opens in Browser)
           MouseArea {
-            id: mangaMouse
+            id: mangaCardMouse
             anchors.fill: parent
+            z: -1
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
@@ -635,17 +723,24 @@ Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
           clip: true
-          spacing: Style.space(6)
+          spacing: Style.space(4)
           model: root.searchResults
 
           delegate: Rectangle {
             id: resultCard
             width: searchListView.width
-            height: Style.space(60)
+            height: Style.space(56)
             radius: Style.cornerRadius
-            color: resMouse.containsMouse ? colCardBg : Util.alpha(colCardBg, 0.4)
-            border.color: resMouse.containsMouse ? colAccent : colBorder
+            color: resCardMouse.containsMouse ? Util.alpha(colAccent, 0.12) : "transparent"
+            border.color: resCardMouse.containsMouse ? Util.alpha(colAccent, 0.3) : "transparent"
             border.width: 1
+
+            property bool copied: false
+            Timer {
+              id: resCopyTimer
+              interval: 1500
+              onTriggered: resultCard.copied = false
+            }
 
             RowLayout {
               anchors.fill: parent
@@ -654,10 +749,10 @@ Item {
 
               Rectangle {
                 width: Style.space(34)
-                height: Style.space(48)
+                height: Style.space(44)
                 radius: 4
                 clip: true
-                color: Qt.darker(colCardBg, 1.3)
+                color: Util.alpha(colForeground, 0.08)
 
                 Image {
                   anchors.fill: parent
@@ -669,7 +764,7 @@ Item {
 
               ColumnLayout {
                 Layout.fillWidth: true
-                spacing: Style.space(2)
+                spacing: Style.space(1)
 
                 Text {
                   Layout.fillWidth: true
@@ -697,6 +792,7 @@ Item {
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
                       color: colAccent
+                      font.bold: true
                     }
                   }
 
@@ -709,17 +805,45 @@ Item {
                 }
               }
 
-              Text {
-                text: "󰌹"
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                color: resMouse.containsMouse ? colAccent : colDim
+              // Copy Link Button
+              Rectangle {
+                width: Style.space(28)
+                height: Style.space(28)
+                radius: Style.cornerRadius
+                color: resCopyHover.containsMouse ? Util.alpha(colAccent, 0.2) : "transparent"
+                border.color: resCopyHover.containsMouse ? Util.alpha(colAccent, 0.4) : "transparent"
+                border.width: 1
+
+                Text {
+                  anchors.centerIn: parent
+                  text: resultCard.copied ? "✓" : "󰌹"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: resultCard.copied ? colAccent : (resCopyHover.containsMouse ? colForeground : colDim)
+                }
+
+                MouseArea {
+                  id: resCopyHover
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: function(mouse) {
+                    mouse.accepted = true
+                    if (modelData.siteUrl && host && host.copyUrl) {
+                      host.copyUrl(modelData.siteUrl)
+                      resultCard.copied = true
+                      resCopyTimer.restart()
+                    }
+                  }
+                }
               }
             }
 
+            // Card Click (Opens in Browser)
             MouseArea {
-              id: resMouse
+              id: resCardMouse
               anchors.fill: parent
+              z: -1
               hoverEnabled: true
               cursorShape: Qt.PointingHandCursor
               onClicked: {
@@ -867,7 +991,7 @@ Item {
           Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Util.alpha(colBorder, 0.5)
+            color: Util.alpha(colBorder, 0.4)
           }
 
           // Accounts Section
@@ -932,7 +1056,7 @@ Item {
           Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Util.alpha(colBorder, 0.5)
+            color: Util.alpha(colBorder, 0.4)
           }
 
           // Notifications Section
@@ -1027,7 +1151,7 @@ Item {
           Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Util.alpha(colBorder, 0.5)
+            color: Util.alpha(colBorder, 0.4)
           }
 
           // Bottom Action Bar: Test | Sync
@@ -1040,7 +1164,7 @@ Item {
               Layout.fillWidth: true
               height: Style.space(32)
               radius: Style.cornerRadius
-              color: testNotifHover.containsMouse ? Util.alpha(colAccent, 0.3) : colCardBg
+              color: testNotifHover.containsMouse ? Util.alpha(colAccent, 0.25) : Util.alpha(colForeground, 0.08)
               border.color: testNotifHover.containsMouse ? colAccent : colBorder
               border.width: 1
 
@@ -1080,10 +1204,10 @@ Item {
               Layout.fillWidth: true
               height: Style.space(32)
               radius: Style.cornerRadius
-              color: root.canSync ? (syncBtnHover.containsMouse ? colAccent : Util.alpha(colAccent, 0.85)) : Util.alpha(colCardBg, 0.4)
+              color: root.canSync ? (syncBtnHover.containsMouse ? Qt.lighter(colAccent, 1.1) : colAccent) : Util.alpha(colForeground, 0.08)
               border.color: root.canSync ? colAccent : colBorder
               border.width: 1
-              opacity: root.canSync ? 1.0 : 0.45
+              opacity: root.canSync ? 1.0 : 0.4
 
               RowLayout {
                 anchors.centerIn: parent
