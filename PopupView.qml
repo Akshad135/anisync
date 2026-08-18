@@ -1285,10 +1285,17 @@ Item {
 
                   RowLayout {
                     anchors.centerIn: parent
-                    spacing: Style.space(4)
+                    spacing: Style.space(5)
 
                     Text {
-                      text: "🖼 Banner"
+                      text: "󰸭"
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      color: (settingsPanelItem.activeAccountTab === "banner") ? "#12131a" : (bannerTabHover.containsMouse ? colForeground : colDim)
+                    }
+
+                    Text {
+                      text: "Banner"
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
                       font.bold: (settingsPanelItem.activeAccountTab === "banner")

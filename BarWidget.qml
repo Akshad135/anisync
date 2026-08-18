@@ -400,7 +400,7 @@ BarWidget {
   }
 
   function sendDropNotification(drop) {
-    var title = "🎌 New Episode: " + drop.title + " Ep " + drop.episode
+    var title = "New Episode: " + drop.title + " Ep " + drop.episode
     var desc = "Now streaming! Click to open."
     var cmd = [
       "omarchy-notification-send",
@@ -425,7 +425,7 @@ BarWidget {
       "-g", "󰵪",
       "-u", "normal",
       "--app-name", "Anime Watcher",
-      "🎌 Anime Watcher Connected!",
+      "Anime Watcher Connected!",
       "Notifications are active. You will receive alerts when new episodes air."
     ]
     notifyProc.running = true
