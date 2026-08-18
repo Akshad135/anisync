@@ -29,6 +29,7 @@ Item {
   property string customBanner: host ? host.customBanner : ""
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
+  property int checkIntervalMins: host ? host.checkIntervalMins : 30
   property int unseenCount: host ? host.unseenCount : 0
 
   // Tick every 15s to refresh countdown strings
@@ -1312,6 +1313,64 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                   if (host && host.updateSetting) host.updateSetting("notifyManga", !root.notifyManga)
+                }
+              }
+            }
+          }
+
+          // Background Sync Interval
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(4)
+
+            Text {
+              text: "Background Sync Interval"
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              color: colDim
+            }
+
+            RowLayout {
+              spacing: Style.space(4)
+
+              Repeater {
+                model: [
+                  { label: "15m", val: 15 },
+                  { label: "30m", val: 30 },
+                  { label: "1h", val: 60 },
+                  { label: "2h", val: 120 },
+                  { label: "Manual", val: 0 }
+                ]
+
+                delegate: Rectangle {
+                  implicitWidth: intText.implicitWidth + 14
+                  implicitHeight: Style.space(24)
+                  radius: Style.cornerRadius - 1
+                  color: (root.checkIntervalMins === modelData.val) 
+                    ? colAccent 
+                    : (intHover.containsMouse ? Util.alpha(colForeground, 0.12) : Util.alpha(colForeground, 0.06))
+                  border.color: (root.checkIntervalMins === modelData.val) ? colAccent : Util.alpha(colBorder, 0.2)
+                  border.width: 1
+
+                  Text {
+                    id: intText
+                    anchors.centerIn: parent
+                    text: modelData.label
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: (root.checkIntervalMins === modelData.val)
+                    color: (root.checkIntervalMins === modelData.val) ? "#12131a" : (intHover.containsMouse ? colForeground : colDim)
+                  }
+
+                  MouseArea {
+                    id: intHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.updateSetting) host.updateSetting("checkIntervalMins", modelData.val)
+                    }
+                  }
                 }
               }
             }

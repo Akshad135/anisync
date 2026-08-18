@@ -417,9 +417,9 @@ BarWidget {
   // ------------------------------------------------------------- Periodic Timers
   Timer {
     id: autoSyncTimer
-    interval: Math.max(5, root.checkIntervalMins) * 60 * 1000
+    interval: root.checkIntervalMins > 0 ? (root.checkIntervalMins * 60 * 1000) : 86400000
     repeat: true
-    running: true
+    running: root.checkIntervalMins > 0
     onTriggered: root.sync()
   }
 
