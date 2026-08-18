@@ -62,10 +62,33 @@ omarchy restart shell
 
 ---
 
+## Uninstallation
+
+To disable or remove the plugin:
+
+```bash
+omarchy plugin disable akshad135.anisync
+omarchy plugin remove akshad135.anisync
+```
+
+---
+
+## Dependencies & Requirements
+
+- `omarchy` / `quickshell` (status bar framework)
+- `curl` (network queries to public APIs)
+- `xdg-open` (opening media links in default browser)
+- `wl-copy` (Wayland clipboard copy)
+- `omarchy-notification-send` (desktop notifications)
+
+---
+
 ## Architecture & Security
 
-- **Zero Credentials:** Uses only public GraphQL and JSON endpoints with strict `--max-time` bounded network requests.
-- **Safe Execution:** All background commands use structured argument arrays via Quickshell `Process` without shell string interpolation.
+- **Network Services:** Queries public HTTPS endpoints on AniList (`https://graphql.anilist.co`) and MyAnimeList (`https://myanimelist.net/`) with strict `--proto =https` protocol enforcement and `--max-time` limits.
+- **Zero Credentials:** No OAuth tokens, secrets, or passwords required or stored.
+- **Safe Execution:** All background child processes use structured argument arrays via Quickshell `Process` without shell string interpolation.
+- **Privilege Boundary:** Runs entirely as an unprivileged user process. No `sudo`, `pkexec`, or system services required.
 - **State Storage:** Settings and seen notification caches are stored safely in `~/.local/state/omarchy/plugins/akshad135.anisync/`.
 
 ---

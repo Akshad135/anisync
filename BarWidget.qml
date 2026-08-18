@@ -254,12 +254,16 @@ BarWidget {
 
   function openUrl(url) {
     if (!url) return
-    Quickshell.execDetached(["xdg-open", String(url)])
+    var u = String(url).trim()
+    if (u.indexOf("https://") !== 0 && u.indexOf("http://") !== 0) return
+    Quickshell.execDetached(["xdg-open", u])
   }
 
   function copyUrl(url) {
     if (!url) return
-    Quickshell.execDetached(["wl-copy", String(url)])
+    var u = String(url).trim()
+    if (u.indexOf("https://") !== 0 && u.indexOf("http://") !== 0) return
+    Quickshell.execDetached(["wl-copy", u])
   }
 
   // Internal provider buffers for union merging
@@ -290,7 +294,7 @@ BarWidget {
       root.aniListError = ""
       var payload = Logic.buildAniListUserQuery(root.aniListUser)
       aniListFetchProc.command = [
-        "curl", "-fsS", "--max-time", "15",
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-X", "POST", "https://graphql.anilist.co",
         "-H", "Content-Type: application/json",
         "-H", "User-Agent: OmarchyAniSync/1.0",
@@ -309,21 +313,21 @@ BarWidget {
     if (root.malUser) {
       root.malError = ""
       malFetchProc.command = [
-        "curl", "-fsS", "--max-time", "15",
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/animelist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
       ]
       malFetchProc.running = true
 
       malMangaFetchProc.command = [
-        "curl", "-fsS", "--max-time", "15",
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/mangalist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
       ]
       malMangaFetchProc.running = true
 
       malAvatarFetchProc.command = [
-        "curl", "-fsS", "--max-time", "15",
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/profile/" + encodeURIComponent(root.malUser)
       ]
@@ -407,10 +411,10 @@ BarWidget {
     root.isSearching = true
     var payload = Logic.buildAniListSearchQuery(query.trim())
     searchProc.command = [
-      "curl", "-fsS", "--max-time", "10",
+      "curl", "-fsS", "--proto", "=https", "--max-time", "10",
       "-X", "POST", "https://graphql.anilist.co",
       "-H", "Content-Type: application/json",
-      "-H", "User-Agent: OmarchyAnimeWatcher/1.0",
+      "-H", "User-Agent: OmarchyAniSync/1.0",
       "-d", payload
     ]
     searchProc.running = true
@@ -436,11 +440,11 @@ BarWidget {
       "-u", "normal",
       "--app-name", "AniSync"
     ]
-    if (drop.cover) {
-      cmd.push("--image", drop.cover)
+    if (drop.cover && String(drop.cover).indexOf("https://") === 0) {
+      cmd.push("--image", String(drop.cover))
     }
-    if (drop.siteUrl) {
-      cmd.push("--exec", "xdg-open '" + drop.siteUrl + "'")
+    if (drop.siteUrl && String(drop.siteUrl).indexOf("https://") === 0) {
+      cmd.push("--exec", "xdg-open '" + String(drop.siteUrl).replace(/'/g, "'\\''") + "'")
     }
     cmd.push(title, desc)
     notifyProc.command = cmd
