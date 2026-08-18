@@ -1016,12 +1016,12 @@ Item {
         ColumnLayout {
           id: settingsCol
           width: parent.width
-          spacing: Style.space(10)
+          spacing: Style.space(14)
 
           // --------------------------------------------- SECTION 1: Accounts & Profile (Sub-Tabs)
           ColumnLayout {
             Layout.fillWidth: true
-            spacing: Style.space(6)
+            spacing: Style.space(8)
 
             RowLayout {
               spacing: Style.space(6)
@@ -1043,14 +1043,14 @@ Item {
             // Sub-tabs: [ 󰚩 AniList • ] [ 󰒓 MAL ] [ 🖼 Banner ]
             Rectangle {
               Layout.fillWidth: true
-              height: Style.space(30)
+              height: Style.space(34)
               radius: Style.cornerRadius
               color: Util.alpha(colForeground, 0.06)
 
               RowLayout {
                 anchors.fill: parent
-                anchors.margins: Style.space(3)
-                spacing: Style.space(3)
+                anchors.margins: Style.space(4)
+                spacing: Style.space(4)
 
                 // AniList SubTab
                 Rectangle {
@@ -1175,7 +1175,7 @@ Item {
             // 1) AniList
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(2)
+              spacing: Style.space(4)
               visible: settingsPanelItem.activeAccountTab === "anilist"
 
               TextField {
@@ -1192,6 +1192,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
+                Layout.topMargin: Style.space(2)
                 text: root.aniListUser.trim().length > 0 
                   ? "✓ Active · Syncs countdown schedules, covers & banner" 
                   : "Syncs your watching/reading lists and exact countdowns"
@@ -1204,7 +1205,7 @@ Item {
             // 2) MAL
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(2)
+              spacing: Style.space(4)
               visible: settingsPanelItem.activeAccountTab === "mal"
 
               TextField {
@@ -1221,6 +1222,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
+                Layout.topMargin: Style.space(2)
                 text: root.malUser.trim().length > 0 
                   ? "✓ Active · Merged with AniList into unified watchlist" 
                   : "Optional · Can be combined with AniList simultaneously"
@@ -1233,7 +1235,7 @@ Item {
             // 3) Banner
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(2)
+              spacing: Style.space(4)
               visible: settingsPanelItem.activeAccountTab === "banner"
 
               TextField {
@@ -1250,6 +1252,7 @@ Item {
 
               Text {
                 Layout.fillWidth: true
+                Layout.topMargin: Style.space(2)
                 text: root.customBanner.trim().length > 0 
                   ? "✓ Custom banner image configured" 
                   : "Leave empty to auto-sync your account profile banner"
@@ -1264,7 +1267,7 @@ Item {
           Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Util.alpha(colBorder, 0.25)
+            color: Util.alpha(colBorder, 0.2)
           }
 
           // --------------------------------------------- SECTION 2 & 3: 2-COLUMN GRID (Sections & Alerts)
@@ -1287,7 +1290,7 @@ Item {
               // Anime Toggle Tile
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(32)
+                height: Style.space(38)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
                 border.color: root.showAnime ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
@@ -1295,7 +1298,7 @@ Item {
 
                 RowLayout {
                   anchors.fill: parent
-                  anchors.margins: Style.space(6)
+                  anchors.margins: Style.space(8)
                   spacing: Style.space(6)
 
                   Text { text: "󰿎"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.showAnime ? colAccent : colDim }
@@ -1331,7 +1334,7 @@ Item {
               // Manga Toggle Tile
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(32)
+                height: Style.space(38)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
                 border.color: root.showManga ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
@@ -1339,7 +1342,7 @@ Item {
 
                 RowLayout {
                   anchors.fill: parent
-                  anchors.margins: Style.space(6)
+                  anchors.margins: Style.space(8)
                   spacing: Style.space(6)
 
                   Text { text: "󰂿"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.showManga ? colAccent : colDim }
@@ -1388,7 +1391,7 @@ Item {
               // Anime Alerts Toggle Tile
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(32)
+                height: Style.space(38)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
                 border.color: root.notifyOnRelease ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
@@ -1396,7 +1399,7 @@ Item {
 
                 RowLayout {
                   anchors.fill: parent
-                  anchors.margins: Style.space(6)
+                  anchors.margins: Style.space(8)
                   spacing: Style.space(6)
 
                   Text { text: "󰿎"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.notifyOnRelease ? colAccent : colDim }
@@ -1432,7 +1435,7 @@ Item {
               // Manga Alerts Toggle Tile
               Rectangle {
                 Layout.fillWidth: true
-                height: Style.space(32)
+                height: Style.space(38)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
                 border.color: root.notifyManga ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
@@ -1440,7 +1443,7 @@ Item {
 
                 RowLayout {
                   anchors.fill: parent
-                  anchors.margins: Style.space(6)
+                  anchors.margins: Style.space(8)
                   spacing: Style.space(6)
 
                   Text { text: "󰂿"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.notifyManga ? colAccent : colDim }
@@ -1479,13 +1482,13 @@ Item {
           Rectangle {
             Layout.fillWidth: true
             height: 1
-            color: Util.alpha(colBorder, 0.25)
+            color: Util.alpha(colBorder, 0.2)
           }
 
           // Background Sync Interval (Full Width Segmented Bar)
           ColumnLayout {
             Layout.fillWidth: true
-            spacing: Style.space(6)
+            spacing: Style.space(8)
 
             RowLayout {
               spacing: Style.space(4)
@@ -1506,14 +1509,14 @@ Item {
 
             Rectangle {
               Layout.fillWidth: true
-              height: Style.space(30)
+              height: Style.space(34)
               radius: Style.cornerRadius
               color: Util.alpha(colForeground, 0.06)
 
               RowLayout {
                 anchors.fill: parent
-                anchors.margins: Style.space(3)
-                spacing: Style.space(3)
+                anchors.margins: Style.space(4)
+                spacing: Style.space(4)
 
                 Repeater {
                   model: [
@@ -1556,22 +1559,16 @@ Item {
             }
           }
 
-          // Section Divider
-          Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: Util.alpha(colBorder, 0.25)
-          }
-
           // --------------------------------------------- SECTION 4: Actions (Test | Save & Sync)
           RowLayout {
             Layout.fillWidth: true
-            spacing: Style.space(8)
+            Layout.topMargin: Style.space(4)
+            spacing: Style.space(10)
 
             // Test Button
             Rectangle {
               Layout.fillWidth: true
-              height: Style.space(34)
+              height: Style.space(38)
               radius: Style.cornerRadius
               color: testNotifHover.containsMouse ? Util.alpha(colAccent, 0.25) : Util.alpha(colForeground, 0.08)
               border.color: testNotifHover.containsMouse ? colAccent : colBorder
@@ -1611,7 +1608,7 @@ Item {
             // Sync Button (Enabled ONLY if account present)
             Rectangle {
               Layout.fillWidth: true
-              height: Style.space(34)
+              height: Style.space(38)
               radius: Style.cornerRadius
               color: root.canSync ? (syncBtnHover.containsMouse ? Qt.lighter(colAccent, 1.1) : colAccent) : Util.alpha(colForeground, 0.08)
               border.color: root.canSync ? colAccent : colBorder
