@@ -34,6 +34,7 @@ BarWidget {
   property string lastSyncText: ""
   property string tickerText: "Anime"
   property int unseenCount: 0
+  property string userAvatar: ""
 
   // Popup controller
   property bool popupOpen: false
@@ -255,6 +256,7 @@ BarWidget {
     root.recentDrops = parsed.recentDrops
     root.watchingList = parsed.watchingAnime
     root.readingManga = parsed.readingManga
+    if (parsed.userAvatar) root.userAvatar = parsed.userAvatar
 
     // Check for newly dropped items that need desktop notifications
     if (root.notifyOnRelease && parsed.newDrops && parsed.newDrops.length > 0) {

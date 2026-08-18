@@ -8,6 +8,14 @@ var ANILIST_ENDPOINT = "https://graphql.anilist.co"
 function buildAniListUserQuery(username) {
   var query = [
     "query ($userName: String) {",
+    "  user: User(name: $userName) {",
+    "    id",
+    "    name",
+    "    avatar {",
+    "      medium",
+    "      large",
+    "    }",
+    "  }",
     "  anime: MediaListCollection(userName: $userName, type: ANIME) {",
     "    lists {",
     "      name",
@@ -146,6 +154,8 @@ function getCover(media) {
 
 function parseAniListResponse(rawJson, seenMap) {
   var result = {
+    userName: "",
+    userAvatar: "",
     upcomingAnime: [],
     watchingAnime: [],
     planningAnime: [],
@@ -171,6 +181,13 @@ function parseAniListResponse(rawJson, seenMap) {
   if (data.errors && data.errors.length > 0) {
     result.error = data.errors[0].message || "AniList API error"
     return result
+  }
+
+  if (data.data && data.data.user) {
+    result.userName = data.data.user.name || ""
+    if (data.data.user.avatar) {
+      result.userAvatar = data.data.user.avatar.large || data.data.user.avatar.medium || ""
+    }
   }
 
   var nowSec = Math.floor(Date.now() / 1000)

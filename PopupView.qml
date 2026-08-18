@@ -24,6 +24,7 @@ Item {
   property string lastSyncText: host ? host.lastSyncText : ""
   property string aniListUser: host ? host.aniListUser : ""
   property string malUser: host ? host.malUser : ""
+  property string userAvatar: host ? host.userAvatar : ""
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
   property int unseenCount: host ? host.unseenCount : 0
@@ -34,11 +35,11 @@ Item {
     ? root.aniListUser.trim() 
     : (root.malUser.trim().length > 0 ? root.malUser.trim() : "Anime Watcher")
 
-  // Main 3 panels: Anime, Manga, Explore
+  // Main 3 panels: Anime, Manga, Explore (with clean recognizable icons)
   readonly property var mainTabsModel: {
     var list = []
-    if (root.showAnime) list.push({ id: "anime", label: "Anime", icon: "󰝚" })
-    if (root.showManga) list.push({ id: "manga", label: "Manga", icon: "󰂬" })
+    if (root.showAnime) list.push({ id: "anime", label: "Anime", icon: "󰿎" })
+    if (root.showManga) list.push({ id: "manga", label: "Manga", icon: "󰂿" })
     list.push({ id: "explore", label: "Explore", icon: "󰍉" })
     return list
   }
@@ -74,21 +75,31 @@ Item {
     anchors.fill: parent
     spacing: Style.space(8)
 
-    // ------------------------------------------------------------- Header: [User Icon] [User Name] (----space----) [Settings] [✕]
+    // ------------------------------------------------------------- Header: [User Avatar] [User Name] (----space----) [Settings] [✕]
     RowLayout {
       Layout.fillWidth: true
       spacing: Style.space(8)
 
-      // User Icon
+      // User Avatar or Fallback Account Icon
       Rectangle {
         width: Style.space(28)
         height: Style.space(28)
-        radius: Style.cornerRadius
+        radius: width / 2
+        clip: true
         color: Util.alpha(colAccent, 0.18)
+
+        Image {
+          anchors.fill: parent
+          source: root.userAvatar
+          fillMode: Image.PreserveAspectCrop
+          visible: root.userAvatar.length > 0
+          asynchronous: true
+        }
 
         Text {
           anchors.centerIn: parent
-          text: "󰚩"
+          visible: !root.userAvatar || root.userAvatar.length === 0
+          text: "󰀉"
           font.family: root.fontFamily
           font.pixelSize: Style.font.subtitle
           color: colAccent
@@ -122,7 +133,7 @@ Item {
         Layout.fillWidth: true
       }
 
-      // Settings Button (Next to user area, top-right)
+      // Settings Button (Top-right)
       Rectangle {
         width: Style.space(28)
         height: Style.space(28)
@@ -352,7 +363,7 @@ Item {
               Text {
                 visible: !modelData.cover
                 anchors.centerIn: parent
-                text: "󰝚"
+                text: "󰿎"
                 font.family: root.fontFamily
                 color: colDim
               }
@@ -468,7 +479,7 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: "󰝚"
+              text: "󰿎"
               font.family: root.fontFamily
               font.pixelSize: Style.font.displayLarge
               color: colBorder
@@ -549,7 +560,7 @@ Item {
               Text {
                 visible: !modelData.cover
                 anchors.centerIn: parent
-                text: "󰂬"
+                text: "󰂿"
                 font.family: root.fontFamily
                 color: colDim
               }
@@ -651,7 +662,7 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: "󰂬"
+              text: "󰂿"
               font.family: root.fontFamily
               font.pixelSize: Style.font.displayLarge
               color: colBorder
