@@ -11,7 +11,7 @@ import "ReleaseLogic.js" as Logic
 
 BarWidget {
   id: root
-  moduleName: "akshad135.anime-watcher"
+  moduleName: "akshad135.anisync"
 
   // ------------------------------------------------------------- Settings & State
   property bool showAnime: true
@@ -58,7 +58,7 @@ BarWidget {
   readonly property color colDim: Qt.darker(Color.foreground, 1.45)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/plugins/akshad135.anime-watcher"
+  readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/plugins/akshad135.anisync"
   readonly property string settingsFilePath: stateDir + "/settings.json"
   readonly property string seenFilePath: stateDir + "/seen.json"
 
@@ -406,7 +406,7 @@ BarWidget {
       "omarchy-notification-send",
       "-g", "󰵪",
       "-u", "normal",
-      "--app-name", "Anime Watcher"
+      "--app-name", "AniSync"
     ]
     if (drop.cover) {
       cmd.push("--image", drop.cover)
@@ -424,8 +424,8 @@ BarWidget {
       "omarchy-notification-send",
       "-g", "󰵪",
       "-u", "normal",
-      "--app-name", "Anime Watcher",
-      "Anime Watcher Connected!",
+      "--app-name", "AniSync",
+      "AniSync Connected!",
       "Notifications are active. You will receive alerts when new episodes air."
     ]
     notifyProc.running = true
@@ -483,7 +483,7 @@ BarWidget {
     active: root.unseenCount > 0
     useActiveColor: true
     activeColor: colAccent
-    tooltipText: root.unseenCount > 0 ? (root.unseenCount + " new episode(s) available") : (root.tickerText ? root.tickerText : "Anime Watcher")
+    tooltipText: root.unseenCount > 0 ? (root.unseenCount + " new episode(s) available") : (root.tickerText ? root.tickerText : "AniSync")
 
     onPressed: function(b) {
       if (b === Qt.RightButton) {
@@ -519,7 +519,7 @@ BarWidget {
 
   // ------------------------------------------------------------- IPC Handler
   IpcHandler {
-    target: "akshad135.anime-watcher"
+    target: "akshad135.anisync"
 
     function open(): void { root.open() }
     function close(): void { root.close() }

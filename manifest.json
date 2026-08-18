@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "id": "akshad135.anime-watcher",
-  "name": "Anime Watcher",
+  "id": "akshad135.anisync",
+  "name": "AniSync",
   "version": "1.0.0",
   "author": "Akshad Agrawal",
   "license": "MIT",
-  "description": "Anime & Manga release tracker with AniList/MAL sync, countdown timers, and desktop notifications",
-  "icon": "assets/anime-watcher.svg",
+  "description": "Anime & Manga release tracker with AniList and MyAnimeList sync, countdown timers, and desktop notifications",
+  "icon": "assets/anisync.svg",
   "kinds": [
     "bar-widget"
   ],
@@ -14,9 +14,9 @@
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
-    "displayName": "Anime Watcher",
-    "icon": "assets/anime-watcher.svg",
-    "description": "Track anime and manga release schedules with AniList/MAL sync",
+    "displayName": "AniSync",
+    "icon": "assets/anisync.svg",
+    "description": "Track anime and manga release schedules with AniList and MyAnimeList sync",
     "category": "Media",
     "allowMultiple": false,
     "defaultSection": "right",

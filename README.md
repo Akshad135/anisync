@@ -1,8 +1,8 @@
-# Anime Watcher for Omarchy
+# AniSync for Omarchy
 
 A native [Omarchy](https://omarchy.org/) status bar and popup plugin that synchronizes with **AniList** and **MyAnimeList (MAL)** to track anime episode releases, manga chapter countdowns, and watchlist progress with native desktop notifications.
 
-![Anime Watcher Preview](preview.png)
+![AniSync Preview](preview.png)
 
 ## Features
 
@@ -16,7 +16,7 @@ A native [Omarchy](https://omarchy.org/) status bar and popup plugin that synchr
   - **Manga:** Reading list progress tracking with chapter counts and scores.
   - **Explore:** Search across AniList for any anime or manga with direct links and copyable URLs.
   - **Settings:** Dual provider management, section toggles, release alerts, background check frequencies, and custom banner backdrop.
-- **IPC & CLI Integration:** Trigger sync, open, close, or toggle the popup via `omarchy-shell akshad135.anime-watcher <action>`.
+- **IPC & CLI Integration:** Trigger sync, open, close, or toggle the popup via `omarchy-shell akshad135.anisync <action>`.
 
 ---
 
@@ -25,14 +25,14 @@ A native [Omarchy](https://omarchy.org/) status bar and popup plugin that synchr
 Install and enable the plugin with a single command:
 
 ```bash
-omarchy plugin add https://github.com/Akshad135/anime-watcher.git --enable
+omarchy plugin add https://github.com/Akshad135/anisync.git --enable
 ```
 
 Alternatively, to install manually:
 
 ```bash
-git clone https://github.com/Akshad135/anime-watcher.git ~/.config/omarchy/plugins/akshad135.anime-watcher
-omarchy plugin enable akshad135.anime-watcher --section right
+git clone https://github.com/Akshad135/anisync.git ~/.config/omarchy/plugins/akshad135.anisync
+omarchy plugin enable akshad135.anisync --section right
 ```
 
 Restart the shell to load the widget:
@@ -47,7 +47,7 @@ omarchy restart shell
 
 - **Left-Click Top Bar Button:** Toggle popup drawer.
 - **Right-Click Top Bar Button:** Force immediate background re-sync.
-- **Search Keybinding / CLI:** Toggle via `omarchy-shell akshad135.anime-watcher toggle`.
+- **Search Keybinding / CLI:** Toggle via `omarchy-shell akshad135.anisync toggle`.
 - **Keyboard Shortcuts in Drawer:**
   - `Escape`: Close popup drawer.
   - `Enter` (in Search): Execute search.
@@ -66,7 +66,7 @@ omarchy restart shell
 
 - **Zero Credentials:** Uses only public GraphQL and JSON endpoints with strict `--max-time` bounded network requests.
 - **Safe Execution:** All background commands use structured argument arrays via Quickshell `Process` without shell string interpolation.
-- **State Storage:** Settings and seen notification caches are stored safely in `~/.local/state/omarchy/plugins/akshad135.anime-watcher/`.
+- **State Storage:** Settings and seen notification caches are stored safely in `~/.local/state/omarchy/plugins/akshad135.anisync/`.
 
 ---
 

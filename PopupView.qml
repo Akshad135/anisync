@@ -55,7 +55,7 @@ Item {
     }
     if (root.aniListUser.trim().length > 0) return root.aniListUser.trim()
     if (root.malUser.trim().length > 0) return root.malUser.trim()
-    return "Anime Watcher"
+    return "AniSync"
   }
 
   readonly property string activeBanner: {
@@ -244,7 +244,7 @@ Item {
           Image {
             anchors.centerIn: parent
             visible: !root.userAvatar || root.userAvatar.length === 0
-            source: root.malUser.length > 0 ? Qt.resolvedUrl("assets/myanimelist.svg") : (root.aniListUser.length > 0 ? Qt.resolvedUrl("assets/anilist.svg") : Qt.resolvedUrl("assets/anime-watcher.svg"))
+            source: root.malUser.length > 0 ? Qt.resolvedUrl("assets/myanimelist.svg") : (root.aniListUser.length > 0 ? Qt.resolvedUrl("assets/anilist.svg") : Qt.resolvedUrl("assets/anisync.svg"))
             width: Style.space(18)
             height: Style.space(18)
             sourceSize: Qt.size(18, 18)

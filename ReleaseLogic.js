@@ -1,4 +1,4 @@
-// ReleaseLogic.js - Pure JavaScript business logic for Anime Watcher plugin
+// ReleaseLogic.js - Pure JavaScript business logic for AniSync plugin
 // Handles AniList GraphQL queries, MAL list parsing, countdowns, and notifications.
 
 var ANILIST_ENDPOINT = "https://graphql.anilist.co"

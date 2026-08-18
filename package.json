@@ -1,5 +1,5 @@
 {
-  "name": "omarchy-anime-watcher",
+  "name": "omarchy-anisync",
   "version": "1.0.0",
   "description": "Anime & Manga release tracker for Omarchy status bar",
   "main": "ReleaseLogic.js",
@@ -13,6 +13,7 @@
     "myanimelist",
     "anime",
     "manga",
+    "anisync",
     "tracker"
   ],
   "author": "Akshad Agrawal",
