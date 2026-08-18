@@ -6,12 +6,13 @@ import { createRequire } from "node:module"
 const require = createRequire(import.meta.url)
 const Logic = require("../ReleaseLogic.js")
 
-test("buildAniListUserQuery generates valid JSON payload", () => {
+test("buildAniListUserQuery generates valid JSON payload with User avatar", () => {
   const payload = Logic.buildAniListUserQuery("akshad")
   assert.ok(payload)
   const parsed = JSON.parse(payload)
   assert.equal(parsed.variables.userName, "akshad")
   assert.ok(parsed.query.includes("MediaListCollection"))
+  assert.ok(parsed.query.includes("User(name: $userName)"))
 })
 
 test("buildAniListSearchQuery generates valid search payload", () => {
@@ -36,9 +37,13 @@ test("formatCountdown handles relative timestamps correctly", () => {
   assert.equal(Logic.formatCountdown(now - 10), "Just released!")
 })
 
-test("parseAniListResponse extracts anime and upcoming schedules", () => {
+test("parseAniListResponse extracts anime, manga, avatar, and upcoming schedules", () => {
   const mockResponse = {
     data: {
+      user: {
+        name: "akshad",
+        avatar: { large: "https://example.com/avatar.png" }
+      },
       anime: {
         lists: [
           {
@@ -74,6 +79,8 @@ test("parseAniListResponse extracts anime and upcoming schedules", () => {
 
   const parsed = Logic.parseAniListResponse(mockResponse, {})
   assert.equal(parsed.error, null)
+  assert.equal(parsed.userName, "akshad")
+  assert.equal(parsed.userAvatar, "https://example.com/avatar.png")
   assert.equal(parsed.watchingAnime.length, 1)
   assert.equal(parsed.watchingAnime[0].title, "One Piece")
   assert.equal(parsed.watchingAnime[0].progress, 1100)
@@ -81,7 +88,7 @@ test("parseAniListResponse extracts anime and upcoming schedules", () => {
   assert.equal(parsed.upcomingAnime[0].nextEpisode, 1175)
 })
 
-test("parseMALListResponse standardizes MAL watchlist", () => {
+test("parseMALListResponse standardizes MAL anime watchlist", () => {
   const mockMAL = [
     {
       anime_id: 41587,
@@ -101,4 +108,102 @@ test("parseMALListResponse standardizes MAL watchlist", () => {
   assert.equal(list[0].progress, 11)
   assert.equal(list[0].totalEpisodes, 25)
   assert.equal(list[0].status, "FINISHED")
+  assert.equal(list[0].source, "MAL")
+})
+
+test("parseMALMangaResponse standardizes MAL manga watchlist", () => {
+  const mockMALManga = [
+    {
+      manga_id: 14090,
+      manga_title: "All Rounder Meguru",
+      manga_english: "All Rounder Meguru",
+      num_read_chapters: 28,
+      manga_num_chapters: 178,
+      manga_publishing_status: 2,
+      score: 8,
+      manga_image_path: "https://example.com/meguru.jpg"
+    }
+  ]
+
+  const list = Logic.parseMALMangaResponse(mockMALManga)
+  assert.equal(list.length, 1)
+  assert.equal(list[0].title, "All Rounder Meguru")
+  assert.equal(list[0].progress, 28)
+  assert.equal(list[0].totalChapters, 178)
+  assert.equal(list[0].status, "FINISHED")
+  assert.equal(list[0].source, "MAL")
+})
+
+test("mergeAnimeLists cleanly unifies and deduplicates AniList + MAL anime lists", () => {
+  const aniListAnime = [
+    {
+      id: "al_21",
+      title: "One Piece",
+      romaji: "ONE PIECE",
+      english: "One Piece",
+      progress: 1100,
+      status: "RELEASING",
+      airingAt: Math.floor(Date.now() / 1000) + 3600,
+      nextEpisode: 1175
+    }
+  ]
+
+  const malAnime = [
+    // Duplicate title with higher progress on MAL
+    {
+      id: "mal_21",
+      title: "One Piece",
+      progress: 1105,
+      status: "RELEASING",
+      siteUrl: "https://myanimelist.net/anime/21/One_Piece"
+    },
+    // Distinct MAL-only show
+    {
+      id: "mal_790",
+      title: "Ergo Proxy",
+      progress: 5,
+      status: "FINISHED",
+      siteUrl: "https://myanimelist.net/anime/790/Ergo_Proxy"
+    }
+  ]
+
+  const unified = Logic.mergeAnimeLists(aniListAnime, malAnime)
+  assert.equal(unified.length, 2)
+  
+  // One Piece deduplicated with synced higher progress from MAL
+  const op = unified.find(i => i.title === "One Piece")
+  assert.ok(op)
+  assert.equal(op.progress, 1105)
+  assert.equal(op.source, "AniList + MAL")
+  assert.equal(op.nextEpisode, 1175)
+
+  // Ergo Proxy included from MAL
+  const ergo = unified.find(i => i.title === "Ergo Proxy")
+  assert.ok(ergo)
+  assert.equal(ergo.source, "MAL")
+})
+
+test("mergeMangaLists cleanly unifies AniList + MAL manga reading lists", () => {
+  const aniListManga = [
+    {
+      id: "al_m_1",
+      title: "Chainsaw Man",
+      progress: 150,
+      status: "RELEASING"
+    }
+  ]
+
+  const malManga = [
+    {
+      id: "mal_m_2",
+      title: "Berserk",
+      progress: 370,
+      status: "RELEASING"
+    }
+  ]
+
+  const unified = Logic.mergeMangaLists(aniListManga, malManga)
+  assert.equal(unified.length, 2)
+  assert.ok(unified.find(m => m.title === "Chainsaw Man"))
+  assert.ok(unified.find(m => m.title === "Berserk"))
 })

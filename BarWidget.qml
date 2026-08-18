@@ -189,6 +189,18 @@ BarWidget {
   }
 
   Process {
+    id: malMangaFetchProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.onMALMangaFetched(String(text || "").trim())
+      }
+    }
+  }
+
+  Process {
     id: searchProc
     running: false
     command: []
@@ -219,6 +231,26 @@ BarWidget {
     Quickshell.execDetached(["wl-copy", String(url)])
   }
 
+  // Internal provider buffers for union merging
+  property var rawAniListAnime: []
+  property var rawAniListManga: []
+  property var rawMALAnime: []
+  property var rawMALManga: []
+
+  function unifyLists() {
+    root.watchingList = Logic.mergeAnimeLists(root.rawAniListAnime, root.rawMALAnime)
+    root.readingManga = Logic.mergeMangaLists(root.rawAniListManga, root.rawMALManga)
+    root.recalculateUnseen()
+    var now = new Date()
+    var hours = now.getHours()
+    var mins = now.getMinutes()
+    var ampm = hours >= 12 ? "PM" : "AM"
+    var h12 = hours % 12 || 12
+    var mStr = mins < 10 ? "0" + mins : String(mins)
+    root.lastSyncText = h12 + ":" + mStr + " " + ampm
+    root.updateTicker()
+  }
+
   function sync() {
     if (!root.aniListUser && !root.malUser) return
     root.isFetching = true
@@ -233,6 +265,11 @@ BarWidget {
         "-d", payload
       ]
       aniListFetchProc.running = true
+    } else {
+      root.rawAniListAnime = []
+      root.rawAniListManga = []
+      root.upcomingList = []
+      root.recentDrops = []
     }
 
     if (root.malUser) {
@@ -242,6 +279,16 @@ BarWidget {
         "https://myanimelist.net/animelist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
       ]
       malFetchProc.running = true
+
+      malMangaFetchProc.command = [
+        "curl", "-fsS", "--max-time", "15",
+        "-A", "Mozilla/5.0",
+        "https://myanimelist.net/mangalist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
+      ]
+      malMangaFetchProc.running = true
+    } else {
+      root.rawMALAnime = []
+      root.rawMALManga = []
     }
   }
 
@@ -252,10 +299,10 @@ BarWidget {
     var parsed = Logic.parseAniListResponse(rawText, root.seenDrops)
     if (parsed.error) return
 
-    root.upcomingList = parsed.upcomingAnime
-    root.recentDrops = parsed.recentDrops
-    root.watchingList = parsed.watchingAnime
-    root.readingManga = parsed.readingManga
+    root.rawAniListAnime = parsed.watchingAnime || []
+    root.rawAniListManga = parsed.readingManga || []
+    root.upcomingList = parsed.upcomingAnime || []
+    root.recentDrops = parsed.recentDrops || []
     if (parsed.userAvatar) root.userAvatar = parsed.userAvatar
 
     // Check for newly dropped items that need desktop notifications
@@ -268,24 +315,21 @@ BarWidget {
       root.saveSeen()
     }
 
-    root.recalculateUnseen()
-    var now = new Date()
-    var hours = now.getHours()
-    var mins = now.getMinutes()
-    var ampm = hours >= 12 ? "PM" : "AM"
-    var h12 = hours % 12 || 12
-    var mStr = mins < 10 ? "0" + mins : String(mins)
-    root.lastSyncText = h12 + ":" + mStr + " " + ampm
-    root.updateTicker()
+    root.unifyLists()
   }
 
   function onMALFetched(rawText) {
+    root.isFetching = false
     if (!rawText) return
-    var malItems = Logic.parseMALListResponse(rawText)
-    if (!root.aniListUser && malItems.length > 0) {
-      root.watchingList = malItems
-      root.updateTicker()
-    }
+    root.rawMALAnime = Logic.parseMALListResponse(rawText)
+    root.unifyLists()
+  }
+
+  function onMALMangaFetched(rawText) {
+    root.isFetching = false
+    if (!rawText) return
+    root.rawMALManga = Logic.parseMALMangaResponse(rawText)
+    root.unifyLists()
   }
 
   function search(query) {

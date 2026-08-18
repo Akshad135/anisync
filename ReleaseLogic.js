@@ -357,6 +357,8 @@ function parseMALListResponse(rawJson) {
       mediaId: row.anime_id,
       type: "ANIME",
       title: title,
+      romaji: row.anime_title || "",
+      english: row.anime_title_eng || "",
       cover: row.anime_image_path || "",
       progress: row.num_watched_episodes || 0,
       totalEpisodes: row.anime_num_episodes || null,
@@ -365,11 +367,155 @@ function parseMALListResponse(rawJson) {
       siteUrl: "https://myanimelist.net" + (row.anime_url || ("/anime/" + row.anime_id)),
       nextEpisode: null,
       airingAt: null,
-      timeUntilAiring: null
+      timeUntilAiring: null,
+      source: "MAL"
     })
   }
 
   return list
+}
+
+function parseMALMangaResponse(rawJson) {
+  var list = []
+  if (!rawJson) return list
+
+  var data = null
+  try {
+    data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
+  } catch (e) {
+    return list
+  }
+
+  if (!Array.isArray(data)) return list
+
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i]
+    var title = row.manga_english || row.manga_title || "Unknown"
+    list.push({
+      id: "mal_m_" + row.manga_id,
+      mediaId: row.manga_id,
+      type: "MANGA",
+      title: title,
+      romaji: row.manga_title || "",
+      english: row.manga_english || "",
+      cover: row.manga_image_path || "",
+      progress: row.num_read_chapters || 0,
+      totalChapters: row.manga_num_chapters || null,
+      status: row.manga_publishing_status === 1 ? "RELEASING" : (row.manga_publishing_status === 2 ? "FINISHED" : "NOT_YET_RELEASED"),
+      score: row.score || 0,
+      siteUrl: "https://myanimelist.net" + (row.manga_url || ("/manga/" + row.manga_id)),
+      source: "MAL"
+    })
+  }
+
+  return list
+}
+
+function normalizeTitle(str) {
+  if (!str) return ""
+  return String(str).toLowerCase().replace(/[^a-z0-9]/g, "")
+}
+
+function mergeAnimeLists(aniListAnime, malAnime) {
+  var ani = Array.isArray(aniListAnime) ? aniListAnime : []
+  var mal = Array.isArray(malAnime) ? malAnime : []
+  var map = {}
+  var combined = []
+
+  // Add all AniList entries first
+  for (var i = 0; i < ani.length; i++) {
+    var item = ani[i]
+    var norm1 = normalizeTitle(item.title)
+    var norm2 = normalizeTitle(item.romaji)
+    var norm3 = normalizeTitle(item.english)
+    if (norm1) map[norm1] = item
+    if (norm2) map[norm2] = item
+    if (norm3) map[norm3] = item
+    item.source = item.source || "AniList"
+    combined.push(item)
+  }
+
+  // Union with MAL entries
+  for (var j = 0; j < mal.length; j++) {
+    var mItem = mal[j]
+    var mNorm = normalizeTitle(mItem.title)
+    var mNormRom = normalizeTitle(mItem.romaji)
+    var existing = map[mNorm] || map[mNormRom]
+
+    if (existing) {
+      existing.source = "AniList + MAL"
+      existing.siteUrlMAL = mItem.siteUrl
+      if ((mItem.progress || 0) > (existing.progress || 0)) {
+        existing.progress = mItem.progress
+      }
+    } else {
+      mItem.source = "MAL"
+      combined.push(mItem)
+      if (mNorm) map[mNorm] = mItem
+      if (mNormRom) map[mNormRom] = mItem
+    }
+  }
+
+  var nowSec = Math.floor(Date.now() / 1000)
+  // Sort: upcoming airing first (closest airing date), then active releasing, then others
+  combined.sort(function(a, b) {
+    var aHasAiring = (a.airingAt && a.airingAt > nowSec) ? 1 : 0
+    var bHasAiring = (b.airingAt && b.airingAt > nowSec) ? 1 : 0
+    if (aHasAiring !== bHasAiring) return bHasAiring - aHasAiring
+    if (aHasAiring && bHasAiring) return a.airingAt - b.airingAt
+    if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
+    if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
+    return 0
+  })
+
+  return combined
+}
+
+function mergeMangaLists(aniListManga, malManga) {
+  var ani = Array.isArray(aniListManga) ? aniListManga : []
+  var mal = Array.isArray(malManga) ? malManga : []
+  var map = {}
+  var combined = []
+
+  for (var i = 0; i < ani.length; i++) {
+    var item = ani[i]
+    var norm1 = normalizeTitle(item.title)
+    var norm2 = normalizeTitle(item.romaji)
+    var norm3 = normalizeTitle(item.english)
+    if (norm1) map[norm1] = item
+    if (norm2) map[norm2] = item
+    if (norm3) map[norm3] = item
+    item.source = item.source || "AniList"
+    combined.push(item)
+  }
+
+  for (var j = 0; j < mal.length; j++) {
+    var mItem = mal[j]
+    var mNorm = normalizeTitle(mItem.title)
+    var mNormRom = normalizeTitle(mItem.romaji)
+    var existing = map[mNorm] || map[mNormRom]
+
+    if (existing) {
+      existing.source = "AniList + MAL"
+      existing.siteUrlMAL = mItem.siteUrl
+      if ((mItem.progress || 0) > (existing.progress || 0)) {
+        existing.progress = mItem.progress
+      }
+    } else {
+      mItem.source = "MAL"
+      combined.push(mItem)
+      if (mNorm) map[mNorm] = mItem
+      if (mNormRom) map[mNormRom] = mItem
+    }
+  }
+
+  combined.sort(function(a, b) {
+    if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
+    if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
+    return 0
+  })
+
+  return combined
 }
 
 // ----------------------------------------------------------- Search Parser
@@ -499,6 +645,10 @@ if (typeof module !== "undefined" && module.exports) {
     buildAniListSearchQuery: buildAniListSearchQuery,
     parseAniListResponse: parseAniListResponse,
     parseMALListResponse: parseMALListResponse,
+    parseMALMangaResponse: parseMALMangaResponse,
+    normalizeTitle: normalizeTitle,
+    mergeAnimeLists: mergeAnimeLists,
+    mergeMangaLists: mergeMangaLists,
     parseSearchResponse: parseSearchResponse,
     formatCountdown: formatCountdown,
     formatShortTicker: formatShortTicker,
