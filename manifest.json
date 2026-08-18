@@ -6,6 +6,7 @@
   "author": "Akshad Agrawal",
   "license": "MIT",
   "description": "Anime & Manga release tracker with AniList/MAL sync, countdown timers, and desktop notifications",
+  "icon": "assets/anime-watcher.svg",
   "kinds": [
     "bar-widget"
   ],
@@ -14,6 +15,7 @@
   },
   "barWidget": {
     "displayName": "Anime Watcher",
+    "icon": "assets/anime-watcher.svg",
     "description": "Track anime and manga release schedules with AniList/MAL sync",
     "category": "Media",
     "allowMultiple": false,

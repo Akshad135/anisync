@@ -179,13 +179,13 @@ Item {
               asynchronous: true
             }
 
-            Text {
+            Image {
               anchors.centerIn: parent
               visible: !root.aniAvatar && !root.userAvatar
-              text: "󰚩"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              color: colAccent
+              source: Qt.resolvedUrl("assets/anilist.svg")
+              width: Style.space(16)
+              height: Style.space(16)
+              sourceSize: Qt.size(16, 16)
             }
           }
 
@@ -211,13 +211,13 @@ Item {
               asynchronous: true
             }
 
-            Text {
+            Image {
               anchors.centerIn: parent
               visible: !root.malAvatar || root.malAvatar.length === 0
-              text: "󰒓"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              color: colForeground
+              source: Qt.resolvedUrl("assets/myanimelist.svg")
+              width: Style.space(16)
+              height: Style.space(16)
+              sourceSize: Qt.size(16, 16)
             }
           }
         }
@@ -241,13 +241,13 @@ Item {
             asynchronous: true
           }
 
-          Text {
+          Image {
             anchors.centerIn: parent
             visible: !root.userAvatar || root.userAvatar.length === 0
-            text: root.malUser.length > 0 ? "󰒓" : "󰀉"
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.subtitle
-            color: colAccent
+            source: root.malUser.length > 0 ? Qt.resolvedUrl("assets/myanimelist.svg") : (root.aniListUser.length > 0 ? Qt.resolvedUrl("assets/anilist.svg") : Qt.resolvedUrl("assets/anime-watcher.svg"))
+            width: Style.space(18)
+            height: Style.space(18)
+            sourceSize: Qt.size(18, 18)
           }
         }
 
@@ -1191,10 +1191,18 @@ Item {
 
                   RowLayout {
                     anchors.centerIn: parent
-                    spacing: Style.space(4)
+                    spacing: Style.space(5)
+
+                    Image {
+                      source: Qt.resolvedUrl("assets/anilist.svg")
+                      width: Style.space(13)
+                      height: Style.space(13)
+                      sourceSize: Qt.size(13, 13)
+                      fillMode: Image.PreserveAspectFit
+                    }
 
                     Text {
-                      text: "󰚩 AniList"
+                      text: "AniList"
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
                       font.bold: (settingsPanelItem.activeAccountTab === "anilist")
@@ -1230,10 +1238,18 @@ Item {
 
                   RowLayout {
                     anchors.centerIn: parent
-                    spacing: Style.space(4)
+                    spacing: Style.space(5)
+
+                    Image {
+                      source: Qt.resolvedUrl("assets/myanimelist.svg")
+                      width: Style.space(13)
+                      height: Style.space(13)
+                      sourceSize: Qt.size(13, 13)
+                      fillMode: Image.PreserveAspectFit
+                    }
 
                     Text {
-                      text: "󰒓 MAL"
+                      text: "MAL"
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
                       font.bold: (settingsPanelItem.activeAccountTab === "mal")
