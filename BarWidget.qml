@@ -391,15 +391,15 @@ BarWidget {
     }
   }
 
-  // ------------------------------------------------------------- PopupCard Anchor
-  PopupCard {
+  // ------------------------------------------------------------- Popup Drawer Anchor
+  KeyboardPanel {
     id: popup
     anchorItem: button
     bar: root.bar
     owner: root
     open: root.popupOpen
-    contentWidth: popup.fittedContentWidth(Style.space(440))
-    contentHeight: popup.cappedContentHeight(Style.space(500))
+    contentWidth: Style.space(440)
+    contentHeight: Style.space(500)
 
     onOpenChanged: {
       if (root.popupOpen !== popup.open) {
