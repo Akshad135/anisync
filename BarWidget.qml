@@ -35,6 +35,8 @@ BarWidget {
   property string tickerText: "Anime"
   property int unseenCount: 0
   property string userAvatar: ""
+  property string userBanner: ""
+  property string customBanner: ""
 
   // Popup controller
   property bool popupOpen: false
@@ -90,6 +92,7 @@ BarWidget {
       if (s.showManga !== undefined) root.showManga = s.showManga
       if (s.aniListUser !== undefined) root.aniListUser = s.aniListUser
       if (s.malUser !== undefined) root.malUser = s.malUser
+      if (s.customBanner !== undefined) root.customBanner = s.customBanner
       if (s.notifyOnRelease !== undefined) root.notifyOnRelease = s.notifyOnRelease
       if (s.notifyManga !== undefined) root.notifyManga = s.notifyManga
       if (s.checkIntervalMins !== undefined) root.checkIntervalMins = s.checkIntervalMins
@@ -102,6 +105,7 @@ BarWidget {
       showManga: root.showManga,
       aniListUser: root.aniListUser,
       malUser: root.malUser,
+      customBanner: root.customBanner,
       notifyOnRelease: root.notifyOnRelease,
       notifyManga: root.notifyManga,
       checkIntervalMins: root.checkIntervalMins
@@ -114,6 +118,7 @@ BarWidget {
     else if (key === "showManga") root.showManga = val
     else if (key === "aniListUser") root.aniListUser = val
     else if (key === "malUser") root.malUser = val
+    else if (key === "customBanner") root.customBanner = val
     else if (key === "notifyOnRelease") root.notifyOnRelease = val
     else if (key === "notifyManga") root.notifyManga = val
     else if (key === "checkIntervalMins") root.checkIntervalMins = val
@@ -304,6 +309,7 @@ BarWidget {
     root.upcomingList = parsed.upcomingAnime || []
     root.recentDrops = parsed.recentDrops || []
     if (parsed.userAvatar) root.userAvatar = parsed.userAvatar
+    if (parsed.userBanner) root.userBanner = parsed.userBanner
 
     // Check for newly dropped items that need desktop notifications
     if (root.notifyOnRelease && parsed.newDrops && parsed.newDrops.length > 0) {

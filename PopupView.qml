@@ -25,6 +25,8 @@ Item {
   property string aniListUser: host ? host.aniListUser : ""
   property string malUser: host ? host.malUser : ""
   property string userAvatar: host ? host.userAvatar : ""
+  property string userBanner: host ? host.userBanner : ""
+  property string customBanner: host ? host.customBanner : ""
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
   property int unseenCount: host ? host.unseenCount : 0
@@ -43,6 +45,10 @@ Item {
   readonly property string displayUserName: root.aniListUser.trim().length > 0 
     ? root.aniListUser.trim() 
     : (root.malUser.trim().length > 0 ? root.malUser.trim() : "Anime Watcher")
+
+  readonly property string activeBanner: (root.customBanner && root.customBanner.trim().length > 0) 
+    ? root.customBanner.trim() 
+    : (root.userBanner || "")
 
   // Main 3 panels: Anime, Manga, Explore
   readonly property var mainTabsModel: {
@@ -84,124 +90,155 @@ Item {
     anchors.fill: parent
     spacing: Style.space(8)
 
-    // ------------------------------------------------------------- Header: [User Avatar] [User Name] (----space----) [Settings] [✕]
-    RowLayout {
+    // ------------------------------------------------------------- Header with Background Banner
+    Rectangle {
       Layout.fillWidth: true
-      spacing: Style.space(8)
+      Layout.preferredHeight: Style.space(48)
+      radius: Style.cornerRadius
+      clip: true
+      color: Util.alpha(colCardBg, 0.4)
+      border.color: Util.alpha(colBorder, 0.3)
+      border.width: 1
 
-      // User Avatar or Fallback Account Icon
+      // Banner Background Image
+      Image {
+        anchors.fill: parent
+        source: root.activeBanner
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+        opacity: 0.28
+        visible: root.activeBanner.length > 0
+      }
+
+      // Soft Darkening Scrim Overlay for 100% text legibility
       Rectangle {
-        width: Style.space(28)
-        height: Style.space(28)
-        radius: width / 2
-        clip: true
-        color: Util.alpha(colAccent, 0.18)
-
-        Image {
-          anchors.fill: parent
-          source: root.userAvatar
-          fillMode: Image.PreserveAspectCrop
-          visible: root.userAvatar.length > 0
-          asynchronous: true
-        }
-
-        Text {
-          anchors.centerIn: parent
-          visible: !root.userAvatar || root.userAvatar.length === 0
-          text: "󰀉"
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.subtitle
-          color: colAccent
-        }
+        anchors.fill: parent
+        color: Qt.rgba(0.04, 0.05, 0.07, root.activeBanner.length > 0 ? 0.52 : 0)
       }
 
-      // User Name + Status
-      ColumnLayout {
-        spacing: 0
+      // Header Row: [Avatar] [User Name/Status] (----space----) [Settings] [✕]
+      RowLayout {
+        anchors.fill: parent
+        anchors.leftMargin: Style.space(8)
+        anchors.rightMargin: Style.space(8)
+        spacing: Style.space(8)
 
-        Text {
-          text: root.displayUserName
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.subtitle
-          font.bold: true
-          color: colForeground
-          elide: Text.ElideRight
-          Layout.maximumWidth: Style.space(220)
+        // User Avatar or Fallback Account Icon
+        Rectangle {
+          width: Style.space(32)
+          height: Style.space(32)
+          radius: width / 2
+          clip: true
+          color: Util.alpha(colAccent, 0.2)
+          border.color: Util.alpha(colAccent, 0.6)
+          border.width: 1
+
+          Image {
+            anchors.fill: parent
+            source: root.userAvatar
+            fillMode: Image.PreserveAspectCrop
+            visible: root.userAvatar.length > 0
+            asynchronous: true
+          }
+
+          Text {
+            anchors.centerIn: parent
+            visible: !root.userAvatar || root.userAvatar.length === 0
+            text: "󰀉"
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.subtitle
+            color: colAccent
+          }
         }
 
-        Text {
-          text: isFetching ? "Syncing..." : (lastSyncText.length > 0 ? ("Updated " + lastSyncText) : "Ready")
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          color: isFetching ? colAccent : colDim
-        }
-      }
+        // User Name + Status
+        ColumnLayout {
+          spacing: 0
 
-      // Space
-      Item {
-        Layout.fillWidth: true
-      }
+          Text {
+            text: root.displayUserName
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.subtitle
+            font.bold: true
+            color: colForeground
+            elide: Text.ElideRight
+            Layout.maximumWidth: Style.space(220)
+          }
 
-      // Settings Button (Top-right)
-      Rectangle {
-        width: Style.space(28)
-        height: Style.space(28)
-        radius: Style.cornerRadius
-        color: root.isSettingsOpen 
-          ? Util.alpha(colAccent, 0.25) 
-          : (settingsHover.containsMouse ? Util.alpha(colForeground, 0.1) : "transparent")
-        border.color: root.isSettingsOpen ? colAccent : (settingsHover.containsMouse ? colBorder : "transparent")
-        border.width: 1
-
-        Text {
-          anchors.centerIn: parent
-          text: "󰒓"
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.body
-          color: root.isSettingsOpen ? colAccent : (settingsHover.containsMouse ? colForeground : colDim)
+          Text {
+            text: isFetching ? "Syncing..." : (lastSyncText.length > 0 ? ("Updated " + lastSyncText) : "Ready")
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            color: isFetching ? colAccent : colDim
+          }
         }
 
-        MouseArea {
-          id: settingsHover
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: {
-            if (root.isSettingsOpen) {
-              root.isSettingsOpen = false
-              root.activeTabId = root.previousTabId || "anime"
-            } else {
-              root.previousTabId = root.activeTabId
-              root.isSettingsOpen = true
+        // Space
+        Item {
+          Layout.fillWidth: true
+        }
+
+        // Settings Button (Top-right)
+        Rectangle {
+          width: Style.space(28)
+          height: Style.space(28)
+          radius: Style.cornerRadius
+          color: root.isSettingsOpen 
+            ? Util.alpha(colAccent, 0.35) 
+            : (settingsHover.containsMouse ? Util.alpha(Color.background, 0.8) : Util.alpha(Color.background, 0.45))
+          border.color: root.isSettingsOpen ? colAccent : (settingsHover.containsMouse ? colBorder : "transparent")
+          border.width: 1
+
+          Text {
+            anchors.centerIn: parent
+            text: "󰒓"
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            color: root.isSettingsOpen ? colAccent : (settingsHover.containsMouse ? colForeground : colDim)
+          }
+
+          MouseArea {
+            id: settingsHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              if (root.isSettingsOpen) {
+                root.isSettingsOpen = false
+                root.activeTabId = root.previousTabId || "anime"
+              } else {
+                root.previousTabId = root.activeTabId
+                root.isSettingsOpen = true
+              }
             }
           }
         }
-      }
 
-      // Close Button
-      Rectangle {
-        width: Style.space(28)
-        height: Style.space(28)
-        radius: Style.cornerRadius
-        color: closeHover.containsMouse ? Util.alpha(colForeground, 0.1) : "transparent"
-        border.color: closeHover.containsMouse ? colBorder : "transparent"
-        border.width: 1
+        // Close Button
+        Rectangle {
+          width: Style.space(28)
+          height: Style.space(28)
+          radius: Style.cornerRadius
+          color: closeHover.containsMouse ? Util.alpha(Color.background, 0.8) : Util.alpha(Color.background, 0.45)
+          border.color: closeHover.containsMouse ? colBorder : "transparent"
+          border.width: 1
 
-        Text {
-          anchors.centerIn: parent
-          text: "✕"
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.bodySmall
-          color: closeHover.containsMouse ? colForeground : colDim
-        }
+          Text {
+            anchors.centerIn: parent
+            text: "✕"
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.bodySmall
+            color: closeHover.containsMouse ? colForeground : colDim
+          }
 
-        MouseArea {
-          id: closeHover
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: {
-            if (host && host.close) host.close()
+          MouseArea {
+            id: closeHover
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+              if (host && host.close) host.close()
+            }
           }
         }
       }
@@ -413,6 +450,14 @@ Item {
                   font.pixelSize: Style.font.caption
                   color: "#f5c518"
                   visible: modelData.score > 0
+                }
+
+                Text {
+                  visible: modelData.source === "AniList + MAL"
+                  text: "AniList+MAL"
+                  font.family: root.fontFamily
+                  font.pixelSize: 9
+                  color: colDim
                 }
               }
 
@@ -729,7 +774,7 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: root.aniListUser ? "No currently reading manga found" : "Set your AniList username in Settings"
+              text: root.aniListUser || root.malUser ? "No currently reading manga found" : "Set your username in Settings"
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               color: colDim
@@ -793,7 +838,7 @@ Item {
           Layout.fillWidth: true
           Layout.fillHeight: true
           clip: true
-          spacing: Style.space(6)
+          spacing: Style.space(4)
           model: root.searchResults
 
           delegate: Rectangle {
@@ -1066,7 +1111,7 @@ Item {
 
           // Accounts Section
           Text {
-            text: "Accounts"
+            text: "Accounts & Banner"
             font.family: root.fontFamily
             font.pixelSize: Style.font.subtitle
             font.bold: true
@@ -1119,6 +1164,31 @@ Item {
 
               onTextEdited: {
                 if (host && host.updateSetting) host.updateSetting("malUser", text.trim())
+              }
+            }
+          }
+
+          // Custom Banner URL / Path
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(3)
+
+            Text {
+              text: "Custom Header Banner (Optional URL or image path)"
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+              color: colDim
+            }
+
+            TextField {
+              id: bannerInput
+              Layout.fillWidth: true
+              text: root.customBanner
+              placeholderText: "Auto-synced from AniList or enter custom image URL"
+              activeFocusOnPress: true
+
+              onTextEdited: {
+                if (host && host.updateSetting) host.updateSetting("customBanner", text.trim())
               }
             }
           }
@@ -1309,6 +1379,7 @@ Item {
                     if (host.updateSetting) {
                       host.updateSetting("aniListUser", aniInput.text.trim())
                       host.updateSetting("malUser", malInput.text.trim())
+                      host.updateSetting("customBanner", bannerInput.text.trim())
                     }
                     if (host.sync) host.sync()
                   }

@@ -11,6 +11,7 @@ function buildAniListUserQuery(username) {
     "  user: User(name: $userName) {",
     "    id",
     "    name",
+    "    bannerImage",
     "    avatar {",
     "      medium",
     "      large",
@@ -156,6 +157,7 @@ function parseAniListResponse(rawJson, seenMap) {
   var result = {
     userName: "",
     userAvatar: "",
+    userBanner: "",
     upcomingAnime: [],
     watchingAnime: [],
     planningAnime: [],
@@ -185,6 +187,7 @@ function parseAniListResponse(rawJson, seenMap) {
 
   if (data.data && data.data.user) {
     result.userName = data.data.user.name || ""
+    result.userBanner = data.data.user.bannerImage || ""
     if (data.data.user.avatar) {
       result.userAvatar = data.data.user.avatar.large || data.data.user.avatar.medium || ""
     }
