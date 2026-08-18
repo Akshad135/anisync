@@ -1006,295 +1006,352 @@ Item {
 
       Flickable {
         anchors.fill: parent
-        contentHeight: settingsCol.implicitHeight
+        contentHeight: settingsCol.implicitHeight + Style.space(12)
         clip: true
 
         ColumnLayout {
           id: settingsCol
           width: parent.width
-          spacing: Style.space(10)
+          spacing: Style.space(12)
 
-          // Display Sections
-          Text {
-            text: "Display Sections"
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
-            color: colForeground
-          }
-
-          RowLayout {
-            Layout.fillWidth: true
-
-            Text {
-              Layout.fillWidth: true
-              text: "Show Anime Section"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: colForeground
-            }
-
-            Rectangle {
-              width: Style.space(38)
-              height: Style.space(20)
-              radius: 10
-              color: root.showAnime ? colAccent : colCardBg
-              border.color: colBorder
-              border.width: 1
-
-              Rectangle {
-                width: Style.space(16)
-                height: Style.space(16)
-                radius: 8
-                color: root.showAnime ? "#12131a" : colDim
-                anchors.verticalCenter: parent.verticalCenter
-                x: root.showAnime ? (parent.width - width - 2) : 2
-
-                Behavior on x { NumberAnimation { duration: 120 } }
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  if (host && host.updateSetting) host.updateSetting("showAnime", !root.showAnime)
-                }
-              }
-            }
-          }
-
-          RowLayout {
-            Layout.fillWidth: true
-
-            Text {
-              Layout.fillWidth: true
-              text: "Show Manga Section"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: colForeground
-            }
-
-            Rectangle {
-              width: Style.space(38)
-              height: Style.space(20)
-              radius: 10
-              color: root.showManga ? colAccent : colCardBg
-              border.color: colBorder
-              border.width: 1
-
-              Rectangle {
-                width: Style.space(16)
-                height: Style.space(16)
-                radius: 8
-                color: root.showManga ? "#12131a" : colDim
-                anchors.verticalCenter: parent.verticalCenter
-                x: root.showManga ? (parent.width - width - 2) : 2
-
-                Behavior on x { NumberAnimation { duration: 120 } }
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  if (host && host.updateSetting) host.updateSetting("showManga", !root.showManga)
-                }
-              }
-            }
-          }
-
+          // --------------------------------------------- SECTION 1: Accounts & Profile
           Rectangle {
             Layout.fillWidth: true
-            height: 1
-            color: Util.alpha(colBorder, 0.4)
-          }
+            radius: Style.cornerRadius
+            color: Util.alpha(colCardBg, 0.3)
+            border.color: Util.alpha(colBorder, 0.3)
+            border.width: 1
+            implicitHeight: accCol.implicitHeight + Style.space(16)
 
-          // Accounts Section
-          Text {
-            text: "Accounts & Banner"
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
-            color: colForeground
-          }
+            ColumnLayout {
+              id: accCol
+              anchors.fill: parent
+              anchors.margins: Style.space(8)
+              spacing: Style.space(8)
 
-          // AniList Username
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Style.space(3)
-
-            Text {
-              text: "AniList Username (Optional)"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: colDim
-            }
-
-            TextField {
-              id: aniInput
-              Layout.fillWidth: true
-              text: root.aniListUser
-              placeholderText: "e.g. akshad"
-              activeFocusOnPress: true
-
-              onTextEdited: {
-                if (host && host.updateSetting) host.updateSetting("aniListUser", text.trim())
-              }
-            }
-          }
-
-          // MyAnimeList Username
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Style.space(3)
-
-            Text {
-              text: "MyAnimeList (MAL) Username (Optional)"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: colDim
-            }
-
-            TextField {
-              id: malInput
-              Layout.fillWidth: true
-              text: root.malUser
-              placeholderText: "e.g. akshad"
-              activeFocusOnPress: true
-
-              onTextEdited: {
-                if (host && host.updateSetting) host.updateSetting("malUser", text.trim())
-              }
-            }
-          }
-
-          // Custom Banner URL / Path
-          ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Style.space(3)
-
-            Text {
-              text: "Custom Header Banner (Optional URL or image path)"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: colDim
-            }
-
-            TextField {
-              id: bannerInput
-              Layout.fillWidth: true
-              text: root.customBanner
-              placeholderText: "Auto-synced from AniList or enter custom image URL"
-              activeFocusOnPress: true
-
-              onTextEdited: {
-                if (host && host.updateSetting) host.updateSetting("customBanner", text.trim())
-              }
-            }
-          }
-
-          Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: Util.alpha(colBorder, 0.4)
-          }
-
-          // Notifications Section
-          Text {
-            text: "Notifications"
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
-            color: colForeground
-          }
-
-          RowLayout {
-            Layout.fillWidth: true
-
-            Text {
-              Layout.fillWidth: true
-              text: "Notify on Anime releases"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: colForeground
-            }
-
-            Rectangle {
-              width: Style.space(38)
-              height: Style.space(20)
-              radius: 10
-              color: root.notifyOnRelease ? colAccent : colCardBg
-              border.color: colBorder
-              border.width: 1
-
-              Rectangle {
-                width: Style.space(16)
-                height: Style.space(16)
-                radius: 8
-                color: root.notifyOnRelease ? "#12131a" : colDim
-                anchors.verticalCenter: parent.verticalCenter
-                x: root.notifyOnRelease ? (parent.width - width - 2) : 2
-
-                Behavior on x { NumberAnimation { duration: 120 } }
+              RowLayout {
+                spacing: Style.space(6)
+                Text {
+                  text: "󰀉"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: colAccent
+                }
+                Text {
+                  text: "Accounts & Profile"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  font.bold: true
+                  color: colForeground
+                }
               }
 
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  if (host && host.updateSetting) host.updateSetting("notifyOnRelease", !root.notifyOnRelease)
+              // AniList Username
+              ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(2)
+
+                Text {
+                  text: "AniList Username"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  color: colDim
+                }
+
+                TextField {
+                  id: aniInput
+                  Layout.fillWidth: true
+                  text: root.aniListUser
+                  placeholderText: "e.g. frizzy135"
+                  activeFocusOnPress: true
+
+                  onTextEdited: {
+                    if (host && host.updateSetting) host.updateSetting("aniListUser", text.trim())
+                  }
+                }
+              }
+
+              // MyAnimeList Username
+              ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(2)
+
+                Text {
+                  text: "MyAnimeList (MAL) Username"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  color: colDim
+                }
+
+                TextField {
+                  id: malInput
+                  Layout.fillWidth: true
+                  text: root.malUser
+                  placeholderText: "e.g. Xinil"
+                  activeFocusOnPress: true
+
+                  onTextEdited: {
+                    if (host && host.updateSetting) host.updateSetting("malUser", text.trim())
+                  }
+                }
+              }
+
+              // Custom Banner URL
+              ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Style.space(2)
+
+                Text {
+                  text: "Custom Header Banner (Optional URL or image path)"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  color: colDim
+                }
+
+                TextField {
+                  id: bannerInput
+                  Layout.fillWidth: true
+                  text: root.customBanner
+                  placeholderText: "Auto-synced from AniList or enter custom image URL"
+                  activeFocusOnPress: true
+
+                  onTextEdited: {
+                    if (host && host.updateSetting) host.updateSetting("customBanner", text.trim())
+                  }
                 }
               }
             }
           }
 
-          RowLayout {
+          // --------------------------------------------- SECTION 2: Display Sections
+          Rectangle {
             Layout.fillWidth: true
+            radius: Style.cornerRadius
+            color: Util.alpha(colCardBg, 0.3)
+            border.color: Util.alpha(colBorder, 0.3)
+            border.width: 1
+            implicitHeight: dispCol.implicitHeight + Style.space(16)
 
-            Text {
-              Layout.fillWidth: true
-              text: "Notify on Manga releases"
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-              color: colForeground
-            }
+            ColumnLayout {
+              id: dispCol
+              anchors.fill: parent
+              anchors.margins: Style.space(8)
+              spacing: Style.space(8)
 
-            Rectangle {
-              width: Style.space(38)
-              height: Style.space(20)
-              radius: 10
-              color: root.notifyManga ? colAccent : colCardBg
-              border.color: colBorder
-              border.width: 1
-
-              Rectangle {
-                width: Style.space(16)
-                height: Style.space(16)
-                radius: 8
-                color: root.notifyManga ? "#12131a" : colDim
-                anchors.verticalCenter: parent.verticalCenter
-                x: root.notifyManga ? (parent.width - width - 2) : 2
-
-                Behavior on x { NumberAnimation { duration: 120 } }
+              RowLayout {
+                spacing: Style.space(6)
+                Text {
+                  text: "󰿎"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: colAccent
+                }
+                Text {
+                  text: "Display Sections"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  font.bold: true
+                  color: colForeground
+                }
               }
 
-              MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                  if (host && host.updateSetting) host.updateSetting("notifyManga", !root.notifyManga)
+              RowLayout {
+                Layout.fillWidth: true
+
+                Text {
+                  Layout.fillWidth: true
+                  text: "Show Anime Section"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: colForeground
+                }
+
+                Rectangle {
+                  width: Style.space(38)
+                  height: Style.space(20)
+                  radius: 10
+                  color: root.showAnime ? colAccent : colCardBg
+                  border.color: colBorder
+                  border.width: 1
+
+                  Rectangle {
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    radius: 8
+                    color: root.showAnime ? "#12131a" : colDim
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: root.showAnime ? (parent.width - width - 2) : 2
+
+                    Behavior on x { NumberAnimation { duration: 120 } }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.updateSetting) host.updateSetting("showAnime", !root.showAnime)
+                    }
+                  }
+                }
+              }
+
+              RowLayout {
+                Layout.fillWidth: true
+
+                Text {
+                  Layout.fillWidth: true
+                  text: "Show Manga Section"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: colForeground
+                }
+
+                Rectangle {
+                  width: Style.space(38)
+                  height: Style.space(20)
+                  radius: 10
+                  color: root.showManga ? colAccent : colCardBg
+                  border.color: colBorder
+                  border.width: 1
+
+                  Rectangle {
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    radius: 8
+                    color: root.showManga ? "#12131a" : colDim
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: root.showManga ? (parent.width - width - 2) : 2
+
+                    Behavior on x { NumberAnimation { duration: 120 } }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.updateSetting) host.updateSetting("showManga", !root.showManga)
+                    }
+                  }
                 }
               }
             }
           }
 
+          // --------------------------------------------- SECTION 3: Notifications & Alerts
           Rectangle {
             Layout.fillWidth: true
-            height: 1
-            color: Util.alpha(colBorder, 0.4)
+            radius: Style.cornerRadius
+            color: Util.alpha(colCardBg, 0.3)
+            border.color: Util.alpha(colBorder, 0.3)
+            border.width: 1
+            implicitHeight: notifCol.implicitHeight + Style.space(16)
+
+            ColumnLayout {
+              id: notifCol
+              anchors.fill: parent
+              anchors.margins: Style.space(8)
+              spacing: Style.space(8)
+
+              RowLayout {
+                spacing: Style.space(6)
+                Text {
+                  text: "󰂚"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: colAccent
+                }
+                Text {
+                  text: "Release Alerts"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  font.bold: true
+                  color: colForeground
+                }
+              }
+
+              RowLayout {
+                Layout.fillWidth: true
+
+                Text {
+                  Layout.fillWidth: true
+                  text: "Notify on new Anime episodes"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: colForeground
+                }
+
+                Rectangle {
+                  width: Style.space(38)
+                  height: Style.space(20)
+                  radius: 10
+                  color: root.notifyOnRelease ? colAccent : colCardBg
+                  border.color: colBorder
+                  border.width: 1
+
+                  Rectangle {
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    radius: 8
+                    color: root.notifyOnRelease ? "#12131a" : colDim
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: root.notifyOnRelease ? (parent.width - width - 2) : 2
+
+                    Behavior on x { NumberAnimation { duration: 120 } }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.updateSetting) host.updateSetting("notifyOnRelease", !root.notifyOnRelease)
+                    }
+                  }
+                }
+              }
+
+              RowLayout {
+                Layout.fillWidth: true
+
+                Text {
+                  Layout.fillWidth: true
+                  text: "Notify on new Manga chapters"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.bodySmall
+                  color: colForeground
+                }
+
+                Rectangle {
+                  width: Style.space(38)
+                  height: Style.space(20)
+                  radius: 10
+                  color: root.notifyManga ? colAccent : colCardBg
+                  border.color: colBorder
+                  border.width: 1
+
+                  Rectangle {
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    radius: 8
+                    color: root.notifyManga ? "#12131a" : colDim
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: root.notifyManga ? (parent.width - width - 2) : 2
+
+                    Behavior on x { NumberAnimation { duration: 120 } }
+                  }
+
+                  MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.updateSetting) host.updateSetting("notifyManga", !root.notifyManga)
+                    }
+                  }
+                }
+              }
+            }
           }
 
-          // Bottom Action Bar: Test | Sync
+          // --------------------------------------------- SECTION 4: Actions (Test | Save & Sync)
           RowLayout {
             Layout.fillWidth: true
             spacing: Style.space(8)
@@ -1302,7 +1359,7 @@ Item {
             // Test Button
             Rectangle {
               Layout.fillWidth: true
-              height: Style.space(32)
+              height: Style.space(34)
               radius: Style.cornerRadius
               color: testNotifHover.containsMouse ? Util.alpha(colAccent, 0.25) : Util.alpha(colForeground, 0.08)
               border.color: testNotifHover.containsMouse ? colAccent : colBorder
@@ -1310,7 +1367,7 @@ Item {
 
               RowLayout {
                 anchors.centerIn: parent
-                spacing: Style.space(4)
+                spacing: Style.space(6)
 
                 Text {
                   text: "󰂚"
@@ -1320,7 +1377,7 @@ Item {
                 }
 
                 Text {
-                  text: "Test"
+                  text: "Test Notification"
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   font.bold: true
@@ -1342,7 +1399,7 @@ Item {
             // Sync Button (Enabled ONLY if account present)
             Rectangle {
               Layout.fillWidth: true
-              height: Style.space(32)
+              height: Style.space(34)
               radius: Style.cornerRadius
               color: root.canSync ? (syncBtnHover.containsMouse ? Qt.lighter(colAccent, 1.1) : colAccent) : Util.alpha(colForeground, 0.08)
               border.color: root.canSync ? colAccent : colBorder
@@ -1351,7 +1408,7 @@ Item {
 
               RowLayout {
                 anchors.centerIn: parent
-                spacing: Style.space(4)
+                spacing: Style.space(6)
 
                 Text {
                   text: "󰑐"
@@ -1361,7 +1418,7 @@ Item {
                 }
 
                 Text {
-                  text: "Sync"
+                  text: "Save & Sync"
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   font.bold: true
