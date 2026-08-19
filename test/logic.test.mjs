@@ -247,3 +247,68 @@ test("parseMALListResponse handles non-existent and private MAL users gracefully
   const res2 = Logic.parseMALListResponse(privateMal)
   assert.equal(res2.error, "MAL watchlist is private")
 })
+
+test("parseAniListResponse only includes CURRENT watching anime and CURRENT reading manga", () => {
+  const mock = {
+    data: {
+      user: { name: "testuser" },
+      anime: {
+        lists: [
+          {
+            name: "Watching",
+            status: "CURRENT",
+            entries: [
+              {
+                id: 1,
+                progress: 5,
+                media: {
+                  id: 101,
+                  title: { english: "Watching Show" },
+                  nextAiringEpisode: { episode: 6, airingAt: Math.floor(Date.now() / 1000) + 3600 }
+                }
+              }
+            ]
+          },
+          {
+            name: "Planning",
+            status: "PLANNING",
+            entries: [
+              {
+                id: 2,
+                progress: 0,
+                media: {
+                  id: 102,
+                  title: { english: "Planning Show" },
+                  nextAiringEpisode: { episode: 1, airingAt: Math.floor(Date.now() / 1000) + 1800 }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      manga: {
+        lists: [
+          {
+            name: "Reading",
+            status: "CURRENT",
+            entries: [{ id: 3, progress: 10, media: { id: 201, title: { english: "Reading Manga" } } }]
+          },
+          {
+            name: "Planning",
+            status: "PLANNING",
+            entries: [{ id: 4, progress: 0, media: { id: 202, title: { english: "Planning Manga" } } }]
+          }
+        ]
+      }
+    }
+  }
+
+  const parsed = Logic.parseAniListResponse(mock, {})
+  assert.equal(parsed.watchingAnime.length, 1)
+  assert.equal(parsed.watchingAnime[0].title, "Watching Show")
+  assert.equal(parsed.upcomingAnime.length, 1)
+  assert.equal(parsed.upcomingAnime[0].title, "Watching Show")
+  assert.equal(parsed.readingManga.length, 1)
+  assert.equal(parsed.readingManga[0].title, "Reading Manga")
+})
+

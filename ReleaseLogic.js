@@ -17,7 +17,7 @@ function buildAniListUserQuery(username) {
     "      large",
     "    }",
     "  }",
-    "  anime: MediaListCollection(userName: $userName, type: ANIME) {",
+    "  anime: MediaListCollection(userName: $userName, type: ANIME, status: CURRENT) {",
     "    lists {",
     "      name",
     "      status",
@@ -53,7 +53,7 @@ function buildAniListUserQuery(username) {
     "      }",
     "    }",
     "  }",
-    "  manga: MediaListCollection(userName: $userName, type: MANGA) {",
+    "  manga: MediaListCollection(userName: $userName, type: MANGA, status: CURRENT) {",
     "    lists {",
     "      name",
     "      status",
@@ -160,7 +160,6 @@ function parseAniListResponse(rawJson, seenMap) {
     userBanner: "",
     upcomingAnime: [],
     watchingAnime: [],
-    planningAnime: [],
     readingManga: [],
     recentDrops: [],
     newDrops: [],
@@ -210,10 +209,11 @@ function parseAniListResponse(rawJson, seenMap) {
 
   var seenIds = {}
 
-  // Parse Anime Lists
+  // Parse Anime Lists (CURRENT / Watching only)
   for (var i = 0; i < animeLists.length; i++) {
     var list = animeLists[i]
     var listStatus = (list.status || "").toUpperCase()
+    if (listStatus !== "CURRENT") continue
     var entries = list.entries || []
 
     for (var j = 0; j < entries.length; j++) {
@@ -247,13 +247,9 @@ function parseAniListResponse(rawJson, seenMap) {
         timeUntilAiring: nextEp ? (nextEp.airingAt - nowSec) : null
       }
 
-      if (listStatus === "CURRENT") {
-        result.watchingAnime.push(item)
-      } else if (listStatus === "PLANNING") {
-        result.planningAnime.push(item)
-      }
+      result.watchingAnime.push(item)
 
-      // If there's an upcoming airing episode
+      // If there's an upcoming airing episode for currently watching anime
       if (nextEp && nextEp.airingAt) {
         var diff = nextEp.airingAt - nowSec
         if (diff > 0) {
@@ -291,10 +287,11 @@ function parseAniListResponse(rawJson, seenMap) {
     return (b.airedAt || 0) - (a.airedAt || 0)
   })
 
-  // Parse Manga Lists
+  // Parse Manga Lists (CURRENT / Reading only)
   for (var m = 0; m < mangaLists.length; m++) {
     var mList = mangaLists[m]
     var mStatus = (mList.status || "").toUpperCase()
+    if (mStatus !== "CURRENT") continue
     var mEntries = mList.entries || []
 
     for (var k = 0; k < mEntries.length; k++) {
@@ -321,9 +318,7 @@ function parseAniListResponse(rawJson, seenMap) {
         averageScore: mMedia.averageScore || 0
       }
 
-      if (mStatus === "CURRENT" || mStatus === "PLANNING") {
-        result.readingManga.push(mItem)
-      }
+      result.readingManga.push(mItem)
     }
   }
 
@@ -384,6 +379,7 @@ function parseMALListResponse(rawJson) {
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i]
+    if (row.status !== undefined && row.status !== 1 && row.status !== "1") continue
     var title = row.anime_title_eng || row.anime_title || "Unknown"
     list.push({
       id: "mal_a_" + row.anime_id,
@@ -442,6 +438,7 @@ function parseMALMangaResponse(rawJson) {
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i]
+    if (row.status !== undefined && row.status !== 1 && row.status !== "1") continue
     var title = row.manga_english || row.manga_title || "Unknown"
     list.push({
       id: "mal_m_" + row.manga_id,
