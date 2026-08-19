@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "akshad135.anisync",
   "name": "AniSync",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "Akshad Agrawal",
   "license": "MIT",
   "description": "Anime & Manga release tracker with AniList and MyAnimeList sync, countdown timers, and desktop notifications",

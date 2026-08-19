@@ -136,11 +136,26 @@ BarWidget {
   }
 
   function loadSeen(raw) {
-    if (!raw) return
+    if (!raw) {
+      root.seenDrops = { seen: {}, lastEp: {}, initialized: false }
+      return
+    }
     try {
       var s = JSON.parse(raw)
-      if (s && typeof s === "object") root.seenDrops = s
-    } catch (e) {}
+      if (s && typeof s === "object") {
+        if (!s.seen && !s.lastEp) {
+          root.seenDrops = { seen: s, lastEp: {}, initialized: true }
+        } else {
+          root.seenDrops = {
+            seen: s.seen || {},
+            lastEp: s.lastEp || {},
+            initialized: s.initialized !== undefined ? s.initialized : true
+          }
+        }
+      }
+    } catch (e) {
+      root.seenDrops = { seen: {}, lastEp: {}, initialized: false }
+    }
   }
 
   function saveSeen() {
@@ -148,15 +163,17 @@ BarWidget {
   }
 
   function markSeen(dropId) {
-    root.seenDrops[dropId] = Math.floor(Date.now() / 1000)
+    if (!root.seenDrops.seen) root.seenDrops.seen = {}
+    root.seenDrops.seen[dropId] = Math.floor(Date.now() / 1000)
     root.saveSeen()
     root.recalculateUnseen()
   }
 
   function markAllSeen() {
     var nowSec = Math.floor(Date.now() / 1000)
+    if (!root.seenDrops.seen) root.seenDrops.seen = {}
     for (var i = 0; i < root.recentDrops.length; i++) {
-      root.seenDrops[root.recentDrops[i].id] = nowSec
+      root.seenDrops.seen[root.recentDrops[i].id] = nowSec
     }
     root.saveSeen()
     root.recalculateUnseen()
@@ -165,9 +182,10 @@ BarWidget {
   function recalculateUnseen() {
     var count = 0
     var drops = root.recentDrops
+    var seenMap = (root.seenDrops && root.seenDrops.seen) ? root.seenDrops.seen : (root.seenDrops || {})
     for (var i = 0; i < drops.length; i++) {
       var drop = drops[i]
-      drop.isNew = !root.seenDrops[drop.id]
+      drop.isNew = !seenMap[drop.id]
       if (drop.isNew) count++
     }
     root.recentDrops = drops
@@ -360,6 +378,9 @@ BarWidget {
     root.rawAniListManga = parsed.readingManga || []
     root.upcomingList = parsed.upcomingAnime || []
     root.recentDrops = parsed.recentDrops || []
+    if (parsed.updatedTrackerState) {
+      root.seenDrops = parsed.updatedTrackerState
+    }
     if (parsed.userAvatar) {
       root.aniAvatar = parsed.userAvatar
       root.userAvatar = parsed.userAvatar
@@ -368,13 +389,14 @@ BarWidget {
 
     // Check for newly dropped items that need desktop notifications
     if (root.notifyOnRelease && parsed.newDrops && parsed.newDrops.length > 0) {
+      if (!root.seenDrops.seen) root.seenDrops.seen = {}
       for (var i = 0; i < parsed.newDrops.length; i++) {
         var drop = parsed.newDrops[i]
         root.sendDropNotification(drop)
-        root.seenDrops[drop.id] = Math.floor(Date.now() / 1000)
+        root.seenDrops.seen[drop.id] = Math.floor(Date.now() / 1000)
       }
-      root.saveSeen()
     }
+    root.saveSeen()
 
     root.unifyLists()
   }

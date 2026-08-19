@@ -153,7 +153,7 @@ function getCover(media) {
 
 // ----------------------------------------------------------- AniList Parser
 
-function parseAniListResponse(rawJson, seenMap) {
+function parseAniListResponse(rawJson, trackerState) {
   var result = {
     userName: "",
     userAvatar: "",
@@ -163,6 +163,7 @@ function parseAniListResponse(rawJson, seenMap) {
     readingManga: [],
     recentDrops: [],
     newDrops: [],
+    updatedTrackerState: null,
     error: null
   }
 
@@ -203,6 +204,12 @@ function parseAniListResponse(rawJson, seenMap) {
     return result
   }
 
+  // Normalize tracker state cache
+  var seenMap = (trackerState && trackerState.seen) ? trackerState.seen : ((trackerState && typeof trackerState === "object") ? trackerState : {})
+  var lastEpMap = (trackerState && trackerState.lastEp) ? trackerState.lastEp : {}
+  var isInitialized = trackerState ? (trackerState.initialized !== false && (Object.keys(lastEpMap).length > 0 || Object.keys(seenMap).length > 0)) : false
+  var newLastEpMap = {}
+
   var nowSec = Math.floor(Date.now() / 1000)
   var animeLists = (data.data && data.data.anime && data.data.anime.lists) || []
   var mangaLists = (data.data && data.data.manga && data.data.manga.lists) || []
@@ -225,6 +232,8 @@ function parseAniListResponse(rawJson, seenMap) {
       var title = getTitle(media)
       var cover = getCover(media)
       var nextEp = media.nextAiringEpisode
+      var currentNextEp = nextEp ? nextEp.episode : null
+      var mediaIdStr = String(media.id)
 
       var item = {
         id: "al_a_" + media.id,
@@ -242,28 +251,51 @@ function parseAniListResponse(rawJson, seenMap) {
         siteUrl: media.siteUrl || ("https://anilist.co/anime/" + media.id),
         genres: media.genres || [],
         averageScore: media.averageScore || 0,
-        nextEpisode: nextEp ? nextEp.episode : null,
+        nextEpisode: currentNextEp,
         airingAt: nextEp ? nextEp.airingAt : null,
         timeUntilAiring: nextEp ? (nextEp.airingAt - nowSec) : null
       }
 
       result.watchingAnime.push(item)
 
-      // If there's an upcoming airing episode for currently watching anime
-      if (nextEp && nextEp.airingAt) {
-        var diff = nextEp.airingAt - nowSec
-        if (diff > 0) {
-          result.upcomingAnime.push(item)
-        } else if (diff >= -172800) { // Aired within the last 48 hours
-          var dropKey = media.id + ":" + nextEp.episode
-          var isNew = !(seenMap && seenMap[dropKey])
+      // State-transition drop detection:
+      // If we previously tracked this show and its upcoming episode increased (e.g. from 7 to 8),
+      // or if it reached the final episode and finished:
+      var prevEp = lastEpMap[mediaIdStr]
+
+      if (isInitialized && prevEp !== undefined && prevEp !== null && prevEp !== "FINISHED") {
+        if (currentNextEp !== null && currentNextEp > prevEp) {
+          // Episodes from prevEp up to (currentNextEp - 1) have aired
+          for (var epNum = prevEp; epNum < currentNextEp; epNum++) {
+            var dropKey = media.id + ":" + epNum
+            var isNew = !seenMap[dropKey]
+            var dropItem = {
+              id: dropKey,
+              mediaId: media.id,
+              type: "ANIME",
+              title: title,
+              episode: epNum,
+              airedAt: nowSec,
+              cover: cover,
+              siteUrl: item.siteUrl,
+              isNew: isNew
+            }
+            result.recentDrops.push(dropItem)
+            if (isNew) {
+              result.newDrops.push(dropItem)
+            }
+          }
+        } else if (currentNextEp === null && media.status === "FINISHED" && prevEp !== "FINISHED") {
+          // Final episode aired and show completed
+          var dropKey = media.id + ":" + prevEp
+          var isNew = !seenMap[dropKey]
           var dropItem = {
             id: dropKey,
             mediaId: media.id,
             type: "ANIME",
             title: title,
-            episode: nextEp.episode,
-            airedAt: nextEp.airingAt,
+            episode: prevEp,
+            airedAt: nowSec,
             cover: cover,
             siteUrl: item.siteUrl,
             isNew: isNew
@@ -274,7 +306,41 @@ function parseAniListResponse(rawJson, seenMap) {
           }
         }
       }
+
+      // Record current next episode for future transitions
+      newLastEpMap[mediaIdStr] = currentNextEp !== null ? currentNextEp : (media.status === "FINISHED" ? "FINISHED" : (prevEp || null))
+
+      // If there is an upcoming episode in the future, add to upcoming list
+      if (nextEp && nextEp.airingAt) {
+        var diff = nextEp.airingAt - nowSec
+        if (diff > 0) {
+          result.upcomingAnime.push(item)
+        }
+      }
     }
+  }
+
+  // Prune seenMap: only keep seen drops for active CURRENT watching anime
+  var activeAnimeIds = {}
+  for (var a = 0; a < result.watchingAnime.length; a++) {
+    activeAnimeIds[String(result.watchingAnime[a].mediaId)] = true
+  }
+
+  var prunedSeenMap = {}
+  for (var dropKey in seenMap) {
+    if (Object.prototype.hasOwnProperty.call(seenMap, dropKey)) {
+      var parts = dropKey.split(":")
+      var showMediaId = parts[0]
+      if (activeAnimeIds[showMediaId]) {
+        prunedSeenMap[dropKey] = seenMap[dropKey]
+      }
+    }
+  }
+
+  result.updatedTrackerState = {
+    seen: prunedSeenMap,
+    lastEp: newLastEpMap,
+    initialized: true
   }
 
   // Sort upcoming anime by closest airing time
@@ -282,9 +348,9 @@ function parseAniListResponse(rawJson, seenMap) {
     return (a.airingAt || 0) - (b.airingAt || 0)
   })
 
-  // Sort recent drops by newest
+  // Sort recent drops by newest episode
   result.recentDrops.sort(function(a, b) {
-    return (b.airedAt || 0) - (a.airedAt || 0)
+    return (b.episode || 0) - (a.episode || 0)
   })
 
   // Parse Manga Lists (CURRENT / Reading only)

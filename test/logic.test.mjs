@@ -312,3 +312,155 @@ test("parseAniListResponse only includes CURRENT watching anime and CURRENT read
   assert.equal(parsed.readingManga[0].title, "Reading Manga")
 })
 
+test("state transition detects newly aired episodes across syncs and offline periods", () => {
+  const showId = 135865
+  const createPayload = (nextEp, airingAt) => ({
+    data: {
+      user: { name: "testuser" },
+      anime: {
+        lists: [
+          {
+            name: "Watching",
+            status: "CURRENT",
+            entries: [
+              {
+                id: 1,
+                progress: 6,
+                media: {
+                  id: showId,
+                  title: { english: "Saga of Tanya the Evil Season 2" },
+                  nextAiringEpisode: nextEp ? { episode: nextEp, airingAt: airingAt || Math.floor(Date.now() / 1000) + 3600 } : null,
+                  status: nextEp ? "RELEASING" : "FINISHED"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      manga: { lists: [] }
+    }
+  })
+
+  // 1. Initial Sync: Ep 7 is coming up. Records state without firing alerts.
+  const sync1 = Logic.parseAniListResponse(createPayload(7), { seen: {}, lastEp: {}, initialized: false })
+  assert.equal(sync1.newDrops.length, 0)
+  assert.equal(sync1.updatedTrackerState.lastEp[showId], 7)
+
+  // 2. Later Sync (e.g. after sleep/reboot): Ep 7 aired, now Ep 8 is upcoming!
+  const sync2 = Logic.parseAniListResponse(createPayload(8), sync1.updatedTrackerState)
+  assert.equal(sync2.newDrops.length, 1)
+  assert.equal(sync2.newDrops[0].episode, 7)
+  assert.equal(sync2.newDrops[0].title, "Saga of Tanya the Evil Season 2")
+  assert.equal(sync2.updatedTrackerState.lastEp[showId], 8)
+
+  // 3. Re-sync without changes: No new alerts.
+  const sync3 = Logic.parseAniListResponse(createPayload(8), sync2.updatedTrackerState)
+  assert.equal(sync3.newDrops.length, 0)
+
+  // 4. Series Finale Sync: Ep 12 aired, show finished.
+  const syncFinale = Logic.parseAniListResponse(createPayload(null), { seen: {}, lastEp: { [showId]: 12 }, initialized: true })
+  assert.equal(syncFinale.newDrops.length, 1)
+  assert.equal(syncFinale.newDrops[0].episode, 12)
+})
+
+test("upcomingList is strictly sorted by closest chronological airing time across all anime", () => {
+  const now = Math.floor(Date.now() / 1000)
+  const mockMulti = {
+    data: {
+      user: { name: "testuser" },
+      anime: {
+        lists: [
+          {
+            name: "Watching",
+            status: "CURRENT",
+            entries: [
+              {
+                id: 1,
+                media: {
+                  id: 101,
+                  title: { english: "Show C (airs in 6 days)" },
+                  nextAiringEpisode: { episode: 8, airingAt: now + 518400 }
+                }
+              },
+              {
+                id: 2,
+                media: {
+                  id: 102,
+                  title: { english: "Show A (airs in 1 day)" },
+                  nextAiringEpisode: { episode: 9, airingAt: now + 86400 }
+                }
+              },
+              {
+                id: 3,
+                media: {
+                  id: 103,
+                  title: { english: "Show B (airs in 3 days)" },
+                  nextAiringEpisode: { episode: 21, airingAt: now + 259200 }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      manga: { lists: [] }
+    }
+  }
+
+  const parsed = Logic.parseAniListResponse(mockMulti, {})
+  assert.equal(parsed.upcomingAnime.length, 3)
+  assert.equal(parsed.upcomingAnime[0].title, "Show A (airs in 1 day)")
+  assert.equal(parsed.upcomingAnime[1].title, "Show B (airs in 3 days)")
+  assert.equal(parsed.upcomingAnime[2].title, "Show C (airs in 6 days)")
+  assert.equal(Logic.formatShortTicker(parsed.upcomingAnime[0]).includes("Show A"), true)
+})
+
+test("cache automatically prunes shows when moved out of CURRENT (completed/paused/dropped)", () => {
+  const show1 = 101
+  const show2 = 102
+
+  // Initial state tracking 2 shows
+  const tracker = {
+    seen: { [`${show1}:7`]: 1700000000, [`${show2}:3`]: 1700000000 },
+    lastEp: { [show1]: 8, [show2]: 4 },
+    initialized: true
+  }
+
+  // Next sync: user completed / dropped show2, so CURRENT only has show1
+  const payloadOnlyShow1 = {
+    data: {
+      user: { name: "testuser" },
+      anime: {
+        lists: [
+          {
+            name: "Watching",
+            status: "CURRENT",
+            entries: [
+              {
+                id: 1,
+                media: {
+                  id: show1,
+                  title: { english: "Show 1 Still Watching" },
+                  nextAiringEpisode: { episode: 8, airingAt: Math.floor(Date.now() / 1000) + 3600 }
+                }
+              }
+            ]
+          }
+        ]
+      },
+      manga: { lists: [] }
+    }
+  }
+
+  const parsed = Logic.parseAniListResponse(payloadOnlyShow1, tracker)
+
+  // Show 1 is kept in lastEp and seen
+  assert.equal(parsed.updatedTrackerState.lastEp[show1], 8)
+  assert.ok(parsed.updatedTrackerState.seen[`${show1}:7`])
+
+  // Show 2 is completely removed/pruned from lastEp and seen cache
+  assert.equal(parsed.updatedTrackerState.lastEp[show2], undefined)
+  assert.equal(parsed.updatedTrackerState.seen[`${show2}:3`], undefined)
+})
+
+
+
