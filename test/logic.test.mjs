@@ -25,13 +25,13 @@ test("buildAniListSearchQuery generates valid search payload", () => {
 
 test("formatCountdown handles relative timestamps correctly", () => {
   const now = Math.floor(Date.now() / 1000)
-  
-  // Future times
-  assert.equal(Logic.formatCountdown(now + 120), "in 2m")
-  assert.equal(Logic.formatCountdown(now + 3600), "in 1h")
-  assert.equal(Logic.formatCountdown(now + 7300), "in 2h 1m")
-  assert.equal(Logic.formatCountdown(now + 90000), "in 1d 1h")
-  assert.equal(Logic.formatCountdown(now + 864000), "in 10 days")
+
+  // Future times (offsets chosen mid-range so ~1s of harness delay can't flip the bucket)
+  assert.equal(Logic.formatCountdown(now + 150), "in 2m")
+  assert.equal(Logic.formatCountdown(now + 3650), "in 1h")
+  assert.equal(Logic.formatCountdown(now + 7290), "in 2h 1m")
+  assert.equal(Logic.formatCountdown(now + 91000), "in 1d 1h")
+  assert.equal(Logic.formatCountdown(now + 870000), "in 10 days")
 
   // Past / current time
   assert.equal(Logic.formatCountdown(now - 10), "Just released!")
@@ -134,78 +134,88 @@ test("parseMALMangaResponse standardizes MAL manga watchlist", () => {
   assert.equal(list[0].source, "MAL")
 })
 
-test("mergeAnimeLists cleanly unifies and deduplicates AniList + MAL anime lists", () => {
-  const aniListAnime = [
-    {
-      id: "al_21",
-      title: "One Piece",
-      romaji: "ONE PIECE",
-      english: "One Piece",
-      progress: 1100,
-      status: "RELEASING",
-      airingAt: Math.floor(Date.now() / 1000) + 3600,
-      nextEpisode: 1175
-    }
-  ]
-
-  const malAnime = [
-    // Duplicate title with higher progress on MAL
-    {
-      id: "mal_21",
-      title: "One Piece",
-      progress: 1105,
-      status: "RELEASING",
-      siteUrl: "https://myanimelist.net/anime/21/One_Piece"
-    },
-    // Distinct MAL-only show
-    {
-      id: "mal_790",
-      title: "Ergo Proxy",
-      progress: 5,
-      status: "FINISHED",
-      siteUrl: "https://myanimelist.net/anime/790/Ergo_Proxy"
-    }
-  ]
-
-  const unified = Logic.mergeAnimeLists(aniListAnime, malAnime)
-  assert.equal(unified.length, 2)
-  
-  // One Piece deduplicated with synced higher progress from MAL
-  const op = unified.find(i => i.title === "One Piece")
-  assert.ok(op)
-  assert.equal(op.progress, 1105)
-  assert.equal(op.source, "AniList + MAL")
-  assert.equal(op.nextEpisode, 1175)
-
-  // Ergo Proxy included from MAL
-  const ergo = unified.find(i => i.title === "Ergo Proxy")
-  assert.ok(ergo)
-  assert.equal(ergo.source, "MAL")
+test("buildAniListMalEnrichQuery generates valid batch idMal_in payload", () => {
+  const payload = Logic.buildAniListMalEnrichQuery([41587, 21])
+  assert.ok(payload)
+  const parsed = JSON.parse(payload)
+  assert.deepEqual(parsed.variables.malIds, [41587, 21])
+  assert.ok(parsed.query.includes("idMal_in: $malIds"))
+  assert.ok(parsed.query.includes("nextAiringEpisode"))
 })
 
-test("mergeMangaLists cleanly unifies AniList + MAL manga reading lists", () => {
-  const aniListManga = [
-    {
-      id: "al_m_1",
-      title: "Chainsaw Man",
-      progress: 150,
-      status: "RELEASING"
+test("parseEnrichResponse maps AniList media by MAL ID", () => {
+  const mock = {
+    data: {
+      Page: {
+        media: [
+          {
+            id: 12345,
+            idMal: 41587,
+            status: "RELEASING",
+            episodes: 25,
+            nextAiringEpisode: { episode: 8, airingAt: Math.floor(Date.now() / 1000) + 3600 },
+            coverImage: { large: "https://example.com/mha.jpg" },
+            siteUrl: "https://anilist.co/anime/12345"
+          }
+        ]
+      }
     }
-  ]
+  }
 
-  const malManga = [
-    {
-      id: "mal_m_2",
-      title: "Berserk",
-      progress: 370,
-      status: "RELEASING"
-    }
-  ]
+  const map = Logic.parseEnrichResponse(mock)
+  assert.equal(map["41587"].id, 12345)
+  assert.equal(map["41587"].nextEpisode, 8)
+  assert.equal(map["41587"].airingAt, mock.data.Page.media[0].nextAiringEpisode.airingAt)
 
-  const unified = Logic.mergeMangaLists(aniListManga, malManga)
-  assert.equal(unified.length, 2)
-  assert.ok(unified.find(m => m.title === "Chainsaw Man"))
-  assert.ok(unified.find(m => m.title === "Berserk"))
+  // Errors and garbage produce an empty map, never a throw
+  assert.deepEqual(Logic.parseEnrichResponse(null), {})
+  assert.deepEqual(Logic.parseEnrichResponse({ errors: [{ message: "oops" }] }), {})
+  assert.deepEqual(Logic.parseEnrichResponse("not json"), {})
+})
+
+test("applyEnrichment fills MAL entries with airing data and builds upcoming list", () => {
+  const now = Math.floor(Date.now() / 1000)
+  const malAnime = [
+    { mediaId: 41587, title: "My Hero Academia Season 5", progress: 11, status: "FINISHED", siteUrl: "https://myanimelist.net/anime/41587" },
+    { mediaId: 21, title: "One Piece", progress: 1100, status: "RELEASING", siteUrl: "https://myanimelist.net/anime/21" }
+  ]
+  const enrichMap = {
+    "21": { id: 21, status: "RELEASING", totalEpisodes: null, nextEpisode: 1175, airingAt: now + 7200, cover: "", siteUrl: "https://anilist.co/anime/21" },
+    "41587": { id: 12345, status: "FINISHED", totalEpisodes: 25, nextEpisode: null, airingAt: null, cover: "", siteUrl: "" }
+  }
+
+  const res = Logic.applyEnrichment(malAnime, enrichMap)
+  const op = res.anime.find(i => i.mediaId === 21)
+  assert.equal(op.nextEpisode, 1175)
+  assert.equal(op.airingAt, now + 7200)
+  assert.equal(op.anilistId, 21)
+  assert.equal(res.upcoming.length, 1)
+  assert.equal(res.upcoming[0].mediaId, 21)
+
+  // Finished show enriched but not upcoming
+  const mha = res.anime.find(i => i.mediaId === 41587)
+  assert.equal(mha.totalEpisodes, 25)
+  assert.equal(mha.airingAt, null)
+})
+
+test("detectDrops fires grouped alerts for MAL-enriched lists across syncs", () => {
+  const now = Math.floor(Date.now() / 1000)
+  const makeList = (nextEp) => ([
+    { mediaId: 21, title: "One Piece", cover: "", siteUrl: "", status: nextEp ? "RELEASING" : "FINISHED", nextEpisode: nextEp }
+  ])
+
+  // Baseline sync records state without alerting
+  const s1 = Logic.detectDrops(makeList(1170), { seen: {}, lastEp: {}, initialized: false })
+  assert.equal(s1.newDrops.length, 0)
+
+  // Offline catch-up: 4 episodes aired at once -> 4 drops
+  const s2 = Logic.detectDrops(makeList(1174), s1.updatedTrackerState)
+  assert.equal(s2.newDrops.length, 4)
+  assert.equal(s2.newDrops[0].title, "One Piece")
+
+  // No change -> no new drops
+  const s3 = Logic.detectDrops(makeList(1174), s2.updatedTrackerState)
+  assert.equal(s3.newDrops.length, 0)
 })
 
 test("parseMALUserAvatar extracts user avatar URL from profile HTML", () => {

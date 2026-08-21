@@ -204,12 +204,6 @@ function parseAniListResponse(rawJson, trackerState) {
     return result
   }
 
-  // Normalize tracker state cache
-  var seenMap = (trackerState && trackerState.seen) ? trackerState.seen : ((trackerState && typeof trackerState === "object") ? trackerState : {})
-  var lastEpMap = (trackerState && trackerState.lastEp) ? trackerState.lastEp : {}
-  var isInitialized = trackerState ? (trackerState.initialized !== false && (Object.keys(lastEpMap).length > 0 || Object.keys(seenMap).length > 0)) : false
-  var newLastEpMap = {}
-
   var nowSec = Math.floor(Date.now() / 1000)
   var animeLists = (data.data && data.data.anime && data.data.anime.lists) || []
   var mangaLists = (data.data && data.data.manga && data.data.manga.lists) || []
@@ -233,7 +227,6 @@ function parseAniListResponse(rawJson, trackerState) {
       var cover = getCover(media)
       var nextEp = media.nextAiringEpisode
       var currentNextEp = nextEp ? nextEp.episode : null
-      var mediaIdStr = String(media.id)
 
       var item = {
         id: "al_a_" + media.id,
@@ -258,58 +251,6 @@ function parseAniListResponse(rawJson, trackerState) {
 
       result.watchingAnime.push(item)
 
-      // State-transition drop detection:
-      // If we previously tracked this show and its upcoming episode increased (e.g. from 7 to 8),
-      // or if it reached the final episode and finished:
-      var prevEp = lastEpMap[mediaIdStr]
-
-      if (isInitialized && prevEp !== undefined && prevEp !== null && prevEp !== "FINISHED") {
-        if (currentNextEp !== null && currentNextEp > prevEp) {
-          // Episodes from prevEp up to (currentNextEp - 1) have aired
-          for (var epNum = prevEp; epNum < currentNextEp; epNum++) {
-            var dropKey = media.id + ":" + epNum
-            var isNew = !seenMap[dropKey]
-            var dropItem = {
-              id: dropKey,
-              mediaId: media.id,
-              type: "ANIME",
-              title: title,
-              episode: epNum,
-              airedAt: nowSec,
-              cover: cover,
-              siteUrl: item.siteUrl,
-              isNew: isNew
-            }
-            result.recentDrops.push(dropItem)
-            if (isNew) {
-              result.newDrops.push(dropItem)
-            }
-          }
-        } else if (currentNextEp === null && media.status === "FINISHED" && prevEp !== "FINISHED") {
-          // Final episode aired and show completed
-          var dropKey = media.id + ":" + prevEp
-          var isNew = !seenMap[dropKey]
-          var dropItem = {
-            id: dropKey,
-            mediaId: media.id,
-            type: "ANIME",
-            title: title,
-            episode: prevEp,
-            airedAt: nowSec,
-            cover: cover,
-            siteUrl: item.siteUrl,
-            isNew: isNew
-          }
-          result.recentDrops.push(dropItem)
-          if (isNew) {
-            result.newDrops.push(dropItem)
-          }
-        }
-      }
-
-      // Record current next episode for future transitions
-      newLastEpMap[mediaIdStr] = currentNextEp !== null ? currentNextEp : (media.status === "FINISHED" ? "FINISHED" : (prevEp || null))
-
       // If there is an upcoming episode in the future, add to upcoming list
       if (nextEp && nextEp.airingAt) {
         var diff = nextEp.airingAt - nowSec
@@ -320,37 +261,15 @@ function parseAniListResponse(rawJson, trackerState) {
     }
   }
 
-  // Prune seenMap: only keep seen drops for active CURRENT watching anime
-  var activeAnimeIds = {}
-  for (var a = 0; a < result.watchingAnime.length; a++) {
-    activeAnimeIds[String(result.watchingAnime[a].mediaId)] = true
-  }
-
-  var prunedSeenMap = {}
-  for (var dropKey in seenMap) {
-    if (Object.prototype.hasOwnProperty.call(seenMap, dropKey)) {
-      var parts = dropKey.split(":")
-      var showMediaId = parts[0]
-      if (activeAnimeIds[showMediaId]) {
-        prunedSeenMap[dropKey] = seenMap[dropKey]
-      }
-    }
-  }
-
-  result.updatedTrackerState = {
-    seen: prunedSeenMap,
-    lastEp: newLastEpMap,
-    initialized: true
-  }
+  // State-transition drop detection (shared with MAL enrichment mode)
+  var drops = detectDrops(result.watchingAnime, trackerState)
+  result.recentDrops = drops.recentDrops
+  result.newDrops = drops.newDrops
+  result.updatedTrackerState = drops.updatedTrackerState
 
   // Sort upcoming anime by closest airing time
   result.upcomingAnime.sort(function(a, b) {
     return (a.airingAt || 0) - (b.airingAt || 0)
-  })
-
-  // Sort recent drops by newest episode
-  result.recentDrops.sort(function(a, b) {
-    return (b.episode || 0) - (a.episode || 0)
   })
 
   // Parse Manga Lists (CURRENT / Reading only)
@@ -409,6 +328,224 @@ function parseAniListResponse(rawJson, trackerState) {
   return result
 }
 
+// ----------------------------------------------------------- Drop Detection & Enrichment
+
+// Shared state-transition drop detection used by both AniList and MAL modes.
+// watchingAnime items need: mediaId, title, cover, siteUrl, status, nextEpisode.
+function detectDrops(watchingAnime, trackerState) {
+  var seenMap = (trackerState && trackerState.seen) ? trackerState.seen : ((trackerState && typeof trackerState === "object") ? trackerState : {})
+  var lastEpMap = (trackerState && trackerState.lastEp) ? trackerState.lastEp : {}
+  var isInitialized = trackerState ? (trackerState.initialized !== false && (Object.keys(lastEpMap).length > 0 || Object.keys(seenMap).length > 0)) : false
+  var nowSec = Math.floor(Date.now() / 1000)
+  var newLastEpMap = {}
+  var recentDrops = []
+  var newDrops = []
+  var processedIds = {}
+
+  for (var i = 0; i < watchingAnime.length; i++) {
+    var item = watchingAnime[i]
+    var mediaIdStr = String(item.mediaId)
+    if (processedIds[mediaIdStr]) continue
+    processedIds[mediaIdStr] = true
+
+    // Normalize: undefined/null/0 all mean "no upcoming episode known"
+    var currentNextEp = item.nextEpisode > 0 ? item.nextEpisode : null
+    var prevEp = lastEpMap[mediaIdStr]
+
+    if (isInitialized && prevEp !== undefined && prevEp !== null && prevEp !== "FINISHED") {
+      if (currentNextEp !== null && currentNextEp > prevEp) {
+        // Episodes from prevEp up to (currentNextEp - 1) have aired
+        for (var epNum = prevEp; epNum < currentNextEp; epNum++) {
+          var dropKey = item.mediaId + ":" + epNum
+          var isNew = !seenMap[dropKey]
+          var dropItem = {
+            id: dropKey,
+            mediaId: item.mediaId,
+            type: "ANIME",
+            title: item.title,
+            episode: epNum,
+            airedAt: nowSec,
+            cover: item.cover,
+            siteUrl: item.siteUrl,
+            isNew: isNew
+          }
+          recentDrops.push(dropItem)
+          if (isNew) {
+            newDrops.push(dropItem)
+          }
+        }
+      } else if (currentNextEp === null && item.status === "FINISHED" && prevEp !== "FINISHED") {
+        // Final episode aired and show completed
+        var finKey = item.mediaId + ":" + prevEp
+        var finIsNew = !seenMap[finKey]
+        var finDrop = {
+          id: finKey,
+          mediaId: item.mediaId,
+          type: "ANIME",
+          title: item.title,
+          episode: prevEp,
+          airedAt: nowSec,
+          cover: item.cover,
+          siteUrl: item.siteUrl,
+          isNew: finIsNew
+        }
+        recentDrops.push(finDrop)
+        if (finIsNew) {
+          newDrops.push(finDrop)
+        }
+      }
+    }
+
+    // Record current next episode for future transitions
+    newLastEpMap[mediaIdStr] = currentNextEp !== null ? currentNextEp : (item.status === "FINISHED" ? "FINISHED" : (prevEp || null))
+  }
+
+  // Prune seenMap: only keep seen drops for active CURRENT watching anime
+  var activeAnimeIds = {}
+  for (var a = 0; a < watchingAnime.length; a++) {
+    activeAnimeIds[String(watchingAnime[a].mediaId)] = true
+  }
+
+  var prunedSeenMap = {}
+  for (var dropKey in seenMap) {
+    if (Object.prototype.hasOwnProperty.call(seenMap, dropKey)) {
+      var showMediaId = dropKey.split(":")[0]
+      if (activeAnimeIds[showMediaId]) {
+        prunedSeenMap[dropKey] = seenMap[dropKey]
+      }
+    }
+  }
+
+  recentDrops.sort(function(a, b) {
+    if (a.mediaId !== b.mediaId) return String(a.title).localeCompare(String(b.title))
+    return (b.episode || 0) - (a.episode || 0)
+  })
+
+  return {
+    recentDrops: recentDrops,
+    newDrops: newDrops,
+    updatedTrackerState: {
+      seen: prunedSeenMap,
+      lastEp: newLastEpMap,
+      initialized: true
+    }
+  }
+}
+
+// Batch lookup of airing schedules by MAL ID (exact match, no title search).
+function buildAniListMalEnrichQuery(malIds) {
+  var query = [
+    "query ($malIds: [Int]) {",
+    "  Page(page: 1, perPage: 50) {",
+    "    media(idMal_in: $malIds, type: ANIME) {",
+    "      id",
+    "      idMal",
+    "      status",
+    "      format",
+    "      episodes",
+    "      nextAiringEpisode {",
+    "        episode",
+    "        airingAt",
+    "        timeUntilAiring",
+    "      }",
+    "      coverImage {",
+    "        medium",
+    "        large",
+    "      }",
+    "      siteUrl",
+    "      genres",
+    "      averageScore",
+    "    }",
+    "  }",
+    "}"
+  ].join("\n")
+
+  return JSON.stringify({
+    query: query,
+    variables: { malIds: malIds }
+  })
+}
+
+// Parses the enrichment response into a map keyed by MAL ID.
+function parseEnrichResponse(rawJson) {
+  var map = {}
+  if (!rawJson) return map
+
+  var data = null
+  try {
+    data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
+  } catch (e) {
+    return map
+  }
+
+  if (!data || (data.errors && data.errors.length > 0)) return map
+
+  var mediaList = (data.data && data.data.Page && data.data.Page.media) || []
+  for (var i = 0; i < mediaList.length; i++) {
+    var m = mediaList[i]
+    if (!m || m.idMal === null || m.idMal === undefined) continue
+    var nextEp = m.nextAiringEpisode
+    map[String(m.idMal)] = {
+      id: m.id,
+      status: m.status || "UNKNOWN",
+      totalEpisodes: m.episodes || null,
+      nextEpisode: nextEp ? nextEp.episode : null,
+      airingAt: nextEp ? nextEp.airingAt : null,
+      cover: m.coverImage ? (m.coverImage.large || m.coverImage.medium || "") : "",
+      siteUrl: m.siteUrl || "",
+      genres: m.genres || [],
+      averageScore: m.averageScore || 0
+    }
+  }
+
+  return map
+}
+
+// Fills MAL anime entries with AniList schedule data and builds the upcoming list.
+function applyEnrichment(animeList, enrichMap) {
+  var list = Array.isArray(animeList) ? animeList : []
+  var map = enrichMap || {}
+  var nowSec = Math.floor(Date.now() / 1000)
+  var upcoming = []
+
+  for (var i = 0; i < list.length; i++) {
+    var item = list[i]
+    var en = map[String(item.mediaId)]
+    if (!en) continue
+
+    item.anilistId = en.id
+    if (en.totalEpisodes && !item.totalEpisodes) item.totalEpisodes = en.totalEpisodes
+    if (en.status) item.status = en.status
+    if (en.cover) item.cover = en.cover
+    if (en.siteUrl) item.anilistUrl = en.siteUrl
+    if (en.genres && en.genres.length > 0) item.genres = en.genres
+    if (en.averageScore) item.averageScore = en.averageScore
+    item.nextEpisode = en.nextEpisode
+    item.airingAt = en.airingAt
+    item.timeUntilAiring = en.airingAt ? (en.airingAt - nowSec) : null
+
+    if (en.nextEpisode !== null && en.airingAt && en.airingAt > nowSec) {
+      upcoming.push(item)
+    }
+  }
+
+  upcoming.sort(function(a, b) {
+    return (a.airingAt || 0) - (b.airingAt || 0)
+  })
+
+  list.sort(function(a, b) {
+    var aHasAiring = (a.airingAt && a.airingAt > nowSec) ? 1 : 0
+    var bHasAiring = (b.airingAt && b.airingAt > nowSec) ? 1 : 0
+    if (aHasAiring !== bHasAiring) return bHasAiring - aHasAiring
+    if (aHasAiring && bHasAiring) return a.airingAt - b.airingAt
+    if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
+    if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
+    return 0
+  })
+
+  return { anime: list, upcoming: upcoming }
+}
+
 // ----------------------------------------------------------- MAL Parser
 
 function parseMALListResponse(rawJson) {
@@ -445,6 +582,7 @@ function parseMALListResponse(rawJson) {
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i]
+    if (!row) continue
     if (row.status !== undefined && row.status !== 1 && row.status !== "1") continue
     var title = row.anime_title_eng || row.anime_title || "Unknown"
     list.push({
@@ -504,6 +642,7 @@ function parseMALMangaResponse(rawJson) {
 
   for (var i = 0; i < data.length; i++) {
     var row = data[i]
+    if (!row) continue
     if (row.status !== undefined && row.status !== 1 && row.status !== "1") continue
     var title = row.manga_english || row.manga_title || "Unknown"
     list.push({
@@ -532,112 +671,6 @@ function parseMALUserAvatar(html) {
   return match ? match[1] : ""
 }
 
-function normalizeTitle(str) {
-  if (!str) return ""
-  return String(str).toLowerCase().replace(/[^a-z0-9]/g, "")
-}
-
-function mergeAnimeLists(aniListAnime, malAnime) {
-  var ani = Array.isArray(aniListAnime) ? aniListAnime : []
-  var mal = Array.isArray(malAnime) ? malAnime : []
-  var map = {}
-  var combined = []
-
-  // Add all AniList entries first
-  for (var i = 0; i < ani.length; i++) {
-    var item = ani[i]
-    var norm1 = normalizeTitle(item.title)
-    var norm2 = normalizeTitle(item.romaji)
-    var norm3 = normalizeTitle(item.english)
-    if (norm1) map[norm1] = item
-    if (norm2) map[norm2] = item
-    if (norm3) map[norm3] = item
-    item.source = item.source || "AniList"
-    combined.push(item)
-  }
-
-  // Union with MAL entries
-  for (var j = 0; j < mal.length; j++) {
-    var mItem = mal[j]
-    var mNorm = normalizeTitle(mItem.title)
-    var mNormRom = normalizeTitle(mItem.romaji)
-    var existing = map[mNorm] || map[mNormRom]
-
-    if (existing) {
-      existing.source = "AniList + MAL"
-      existing.siteUrlMAL = mItem.siteUrl
-      if ((mItem.progress || 0) > (existing.progress || 0)) {
-        existing.progress = mItem.progress
-      }
-    } else {
-      mItem.source = "MAL"
-      combined.push(mItem)
-      if (mNorm) map[mNorm] = mItem
-      if (mNormRom) map[mNormRom] = mItem
-    }
-  }
-
-  var nowSec = Math.floor(Date.now() / 1000)
-  // Sort: upcoming airing first (closest airing date), then active releasing, then others
-  combined.sort(function(a, b) {
-    var aHasAiring = (a.airingAt && a.airingAt > nowSec) ? 1 : 0
-    var bHasAiring = (b.airingAt && b.airingAt > nowSec) ? 1 : 0
-    if (aHasAiring !== bHasAiring) return bHasAiring - aHasAiring
-    if (aHasAiring && bHasAiring) return a.airingAt - b.airingAt
-    if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
-    if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
-    return 0
-  })
-
-  return combined
-}
-
-function mergeMangaLists(aniListManga, malManga) {
-  var ani = Array.isArray(aniListManga) ? aniListManga : []
-  var mal = Array.isArray(malManga) ? malManga : []
-  var map = {}
-  var combined = []
-
-  for (var i = 0; i < ani.length; i++) {
-    var item = ani[i]
-    var norm1 = normalizeTitle(item.title)
-    var norm2 = normalizeTitle(item.romaji)
-    var norm3 = normalizeTitle(item.english)
-    if (norm1) map[norm1] = item
-    if (norm2) map[norm2] = item
-    if (norm3) map[norm3] = item
-    item.source = item.source || "AniList"
-    combined.push(item)
-  }
-
-  for (var j = 0; j < mal.length; j++) {
-    var mItem = mal[j]
-    var mNorm = normalizeTitle(mItem.title)
-    var mNormRom = normalizeTitle(mItem.romaji)
-    var existing = map[mNorm] || map[mNormRom]
-
-    if (existing) {
-      existing.source = "AniList + MAL"
-      existing.siteUrlMAL = mItem.siteUrl
-      if ((mItem.progress || 0) > (existing.progress || 0)) {
-        existing.progress = mItem.progress
-      }
-    } else {
-      mItem.source = "MAL"
-      combined.push(mItem)
-      if (mNorm) map[mNorm] = mItem
-      if (mNormRom) map[mNormRom] = mItem
-    }
-  }
-
-  combined.sort(function(a, b) {
-    if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
-    if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
-    return 0
-  })
-
-  return combined
-}
 
 // ----------------------------------------------------------- Search Parser
 
@@ -657,6 +690,7 @@ function parseSearchResponse(rawJson) {
 
   for (var i = 0; i < mediaList.length; i++) {
     var media = mediaList[i]
+    if (!media) continue
     var nextEp = media.nextAiringEpisode
     list.push({
       id: "search_" + media.id,
@@ -765,12 +799,13 @@ if (typeof module !== "undefined" && module.exports) {
     buildAniListUserQuery: buildAniListUserQuery,
     buildAniListSearchQuery: buildAniListSearchQuery,
     parseAniListResponse: parseAniListResponse,
+    detectDrops: detectDrops,
+    buildAniListMalEnrichQuery: buildAniListMalEnrichQuery,
+    parseEnrichResponse: parseEnrichResponse,
+    applyEnrichment: applyEnrichment,
     parseMALListResponse: parseMALListResponse,
     parseMALMangaResponse: parseMALMangaResponse,
     parseMALUserAvatar: parseMALUserAvatar,
-    normalizeTitle: normalizeTitle,
-    mergeAnimeLists: mergeAnimeLists,
-    mergeMangaLists: mergeMangaLists,
     parseSearchResponse: parseSearchResponse,
     formatCountdown: formatCountdown,
     formatShortTicker: formatShortTicker,

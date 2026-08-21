@@ -16,8 +16,8 @@ BarWidget {
   // ------------------------------------------------------------- Settings & State
   property bool showAnime: true
   property bool showManga: true
-  property string aniListUser: "akshad"
-  property string malUser: ""
+  property string provider: "anilist"
+  property string userName: ""
   property bool notifyOnRelease: true
   property bool notifyManga: true
   property int checkIntervalMins: 30
@@ -27,8 +27,25 @@ BarWidget {
   property var watchingList: []
   property var readingManga: []
   property var searchResults: []
-  property var seenDrops: ({})
+  property var seenDrops: ({ seen: {}, lastEp: {}, initialized: false })
+  property var enrichMap: ({})
 
+  // MAL sync pipeline state: null = pending, array = ok, false = failed
+  property var pendingMALAnime: null
+  property var pendingMALManga: null
+  property var pendingEnrichTarget: null
+  property var enrichQueue: []
+
+  property bool ready: false
+  property bool settingsLoaded: false
+  property bool cacheProcessed: false
+  property string pendingCacheRaw: ""
+  // Generation counter: incremented on every sync() and resetAccount(). Async
+  // completions compare their dispatch generation against this and discard
+  // results if a newer sync/account switch happened meanwhile.
+  property int syncGen: 0
+  property int aniListGen: 0
+  property int malGen: 0
   property bool isFetching: false
   property bool isSearching: false
   property string lastSyncText: ""
@@ -37,8 +54,7 @@ BarWidget {
   property string userAvatar: ""
   property string aniAvatar: ""
   property string malAvatar: ""
-  property string aniListError: ""
-  property string malError: ""
+  property string syncError: ""
   property string userBanner: ""
   property string customBanner: ""
 
@@ -49,8 +65,12 @@ BarWidget {
   function toggle() { popupOpen = !popupOpen }
 
   onPopupOpenChanged: {
-    if (popupOpen && (root.aniListUser || root.malUser) && root.watchingList.length === 0) {
-      root.sync()
+    if (popupOpen) {
+      // Discard abandoned draft edits from a previous popup session
+      if (popupView.beginDrafts) popupView.beginDrafts()
+      if (root.userName && root.watchingList.length === 0) {
+        root.sync()
+      }
     }
   }
 
@@ -62,7 +82,7 @@ BarWidget {
 
   readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/plugins/akshad135.anisync"
   readonly property string settingsFilePath: stateDir + "/settings.json"
-  readonly property string seenFilePath: stateDir + "/seen.json"
+  readonly property string cacheFilePath: stateDir + "/cache.json"
 
   // ------------------------------------------------------------- State Persistence
   Process {
@@ -70,8 +90,7 @@ BarWidget {
     command: ["mkdir", "-p", root.stateDir]
     onExited: function(code) {
       settingsFile.reload()
-      seenFile.reload()
-      root.sync()
+      cacheFile.reload()
     }
   }
 
@@ -80,15 +99,27 @@ BarWidget {
     path: root.settingsFilePath
     watchChanges: true
     printErrors: false
-    onLoaded: root.loadSettings(text())
+    onLoaded: {
+      root.loadSettings(text())
+      root.markSettingsLoaded()
+    }
+    onLoadFailed: root.markSettingsLoaded()
   }
 
   FileView {
-    id: seenFile
-    path: root.seenFilePath
-    watchChanges: true
+    id: cacheFile
+    path: root.cacheFilePath
+    watchChanges: false
     printErrors: false
-    onLoaded: root.loadSeen(text())
+    onLoaded: {
+      root.pendingCacheRaw = String(text() || "")
+      root.cacheProcessed = true
+      root.processStartup()
+    }
+    onLoadFailed: {
+      root.cacheProcessed = true
+      root.processStartup()
+    }
   }
 
   function loadSettings(raw) {
@@ -100,12 +131,27 @@ BarWidget {
       var s = JSON.parse(raw)
       if (s.showAnime !== undefined) root.showAnime = s.showAnime
       if (s.showManga !== undefined) root.showManga = s.showManga
-      if (s.aniListUser !== undefined) root.aniListUser = s.aniListUser
-      if (s.malUser !== undefined) root.malUser = s.malUser
-      if (s.customBanner !== undefined) root.customBanner = s.customBanner
       if (s.notifyOnRelease !== undefined) root.notifyOnRelease = s.notifyOnRelease
       if (s.notifyManga !== undefined) root.notifyManga = s.notifyManga
       if (s.checkIntervalMins !== undefined) root.checkIntervalMins = s.checkIntervalMins
+      if (s.customBanner !== undefined) root.customBanner = s.customBanner
+
+      if (s.provider !== undefined && s.userName !== undefined) {
+        root.provider = s.provider
+        root.userName = s.userName
+      } else if (s.aniListUser !== undefined || s.malUser !== undefined) {
+        // Legacy single-provider migration: old settings had per-provider usernames
+        var aniUser = String(s.aniListUser || "").trim()
+        var malUser = String(s.malUser || "").trim()
+        if (aniUser.length > 0) {
+          root.provider = "anilist"
+          root.userName = aniUser
+        } else if (malUser.length > 0) {
+          root.provider = "mal"
+          root.userName = malUser
+        }
+        root.saveSettings()
+      }
     } catch (e) {}
   }
 
@@ -113,8 +159,8 @@ BarWidget {
     var payload = {
       showAnime: root.showAnime,
       showManga: root.showManga,
-      aniListUser: root.aniListUser,
-      malUser: root.malUser,
+      provider: root.provider,
+      userName: root.userName,
       customBanner: root.customBanner,
       notifyOnRelease: root.notifyOnRelease,
       notifyManga: root.notifyManga,
@@ -126,46 +172,116 @@ BarWidget {
   function updateSetting(key, val) {
     if (key === "showAnime") root.showAnime = val
     else if (key === "showManga") root.showManga = val
-    else if (key === "aniListUser") root.aniListUser = val
-    else if (key === "malUser") root.malUser = val
     else if (key === "customBanner") root.customBanner = val
     else if (key === "notifyOnRelease") root.notifyOnRelease = val
     else if (key === "notifyManga") root.notifyManga = val
     else if (key === "checkIntervalMins") root.checkIntervalMins = val
+    else if (key === "provider") {
+      var p = String(val || "").trim()
+      if (p !== root.provider) {
+        root.provider = p
+        root.saveSettings()
+        root.resetAccount()
+      }
+      return
+    } else if (key === "userName") {
+      var u = String(val || "").trim()
+      if (u !== root.userName) {
+        root.userName = u
+        root.saveSettings()
+        root.resetAccount()
+      }
+      return
+    }
     root.saveSettings()
   }
 
-  function loadSeen(raw) {
-    if (!raw) {
-      root.seenDrops = { seen: {}, lastEp: {}, initialized: false }
-      return
-    }
-    try {
-      var s = JSON.parse(raw)
-      if (s && typeof s === "object") {
-        if (!s.seen && !s.lastEp) {
-          root.seenDrops = { seen: s, lastEp: {}, initialized: true }
-        } else {
-          root.seenDrops = {
-            seen: s.seen || {},
-            lastEp: s.lastEp || {},
-            initialized: s.initialized !== undefined ? s.initialized : true
-          }
+  // ------------------------------------------------------------- Cache Snapshot
+  function hydrateFromCache(raw) {
+    if (!root.ready && raw) {
+      try {
+        var c = JSON.parse(raw)
+        if (c && c.provider === root.provider && c.user === root.userName) {
+          root.seenDrops = (c.tracker && typeof c.tracker === "object")
+            ? c.tracker
+            : { seen: {}, lastEp: {}, initialized: false }
+          root.watchingList = c.watchingAnime || []
+          root.readingManga = c.readingManga || []
+          root.upcomingList = c.upcomingAnime || []
+          root.recentDrops = c.recentDrops || []
+          root.enrichMap = c.malToAnilist || {}
+          root.userAvatar = c.avatar || ""
+          root.aniAvatar = root.provider === "anilist" ? (c.avatar || "") : ""
+          root.malAvatar = root.provider === "mal" ? (c.avatar || "") : ""
+          root.userBanner = c.banner || ""
+          root.lastSyncText = c.lastSyncText || ""
+          root.recalculateUnseen()
+          root.updateTicker()
         }
-      }
-    } catch (e) {
-      root.seenDrops = { seen: {}, lastEp: {}, initialized: false }
+      } catch (e) {}
     }
   }
 
-  function saveSeen() {
-    seenFile.setText(JSON.stringify(root.seenDrops, null, 2) + "\n")
+  function markSettingsLoaded() {
+    root.settingsLoaded = true
+    root.processStartup()
+  }
+
+  // Runs once both settings and cache files have been processed (loaded or
+  // failed). Guarantees hydration sees the real account before first sync.
+  function processStartup() {
+    if (root.ready || !root.settingsLoaded || !root.cacheProcessed) return
+    root.hydrateFromCache(root.pendingCacheRaw)
+    root.pendingCacheRaw = ""
+    root.ready = true
+    root.sync()
+  }
+
+  function saveCache() {
+    var payload = {
+      provider: root.provider,
+      user: root.userName,
+      avatar: root.userAvatar,
+      banner: root.userBanner,
+      lastSyncText: root.lastSyncText,
+      watchingAnime: root.watchingList,
+      readingManga: root.readingManga,
+      upcomingAnime: root.upcomingList,
+      recentDrops: root.recentDrops,
+      malToAnilist: root.enrichMap,
+      tracker: root.seenDrops
+    }
+    cacheFile.setText(JSON.stringify(payload, null, 2) + "\n")
+  }
+
+  // Wipes all account-scoped state. Called when provider or userName changes.
+  function resetAccount() {
+    root.syncGen++
+    root.watchingList = []
+    root.readingManga = []
+    root.upcomingList = []
+    root.recentDrops = []
+    root.unseenCount = 0
+    root.seenDrops = { seen: {}, lastEp: {}, initialized: false }
+    root.enrichMap = {}
+    root.pendingMALAnime = null
+    root.pendingMALManga = null
+    root.pendingEnrichTarget = null
+    root.enrichQueue = []
+    root.userAvatar = ""
+    root.aniAvatar = ""
+    root.malAvatar = ""
+    root.userBanner = ""
+    root.lastSyncText = ""
+    root.syncError = ""
+    root.tickerText = "Anime"
+    root.saveCache()
   }
 
   function markSeen(dropId) {
     if (!root.seenDrops.seen) root.seenDrops.seen = {}
     root.seenDrops.seen[dropId] = Math.floor(Date.now() / 1000)
-    root.saveSeen()
+    root.saveCache()
     root.recalculateUnseen()
   }
 
@@ -175,7 +291,7 @@ BarWidget {
     for (var i = 0; i < root.recentDrops.length; i++) {
       root.seenDrops.seen[root.recentDrops[i].id] = nowSec
     }
-    root.saveSeen()
+    root.saveCache()
     root.recalculateUnseen()
   }
 
@@ -250,6 +366,18 @@ BarWidget {
   }
 
   Process {
+    id: enrichProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.onEnrichFetched(String(text || "").trim())
+      }
+    }
+  }
+
+  Process {
     id: searchProc
     running: false
     command: []
@@ -262,12 +390,6 @@ BarWidget {
     onExited: function(exitCode) {
       root.isSearching = false
     }
-  }
-
-  Process {
-    id: notifyProc
-    running: false
-    command: []
   }
 
   function openUrl(url) {
@@ -284,16 +406,8 @@ BarWidget {
     Quickshell.execDetached(["wl-copy", u])
   }
 
-  // Internal provider buffers for union merging
-  property var rawAniListAnime: []
-  property var rawAniListManga: []
-  property var rawMALAnime: []
-  property var rawMALManga: []
-
-  function unifyLists() {
-    root.watchingList = Logic.mergeAnimeLists(root.rawAniListAnime, root.rawMALAnime)
-    root.readingManga = Logic.mergeMangaLists(root.rawAniListManga, root.rawMALManga)
-    root.recalculateUnseen()
+  function finalizeSync() {
+    root.isFetching = false
     var now = new Date()
     var hours = now.getHours()
     var mins = now.getMinutes()
@@ -301,16 +415,54 @@ BarWidget {
     var h12 = hours % 12 || 12
     var mStr = mins < 10 ? "0" + mins : String(mins)
     root.lastSyncText = h12 + ":" + mStr + " " + ampm
+    root.recalculateUnseen()
     root.updateTicker()
+    root.saveCache()
+  }
+
+  // Groups new drops per show and sends one notification per show.
+  function notifyNewDrops(newDrops) {
+    if (!root.notifyOnRelease || !newDrops || newDrops.length === 0) return
+    if (!root.seenDrops.seen) root.seenDrops.seen = {}
+    var groups = {}
+    for (var i = 0; i < newDrops.length; i++) {
+      var drop = newDrops[i]
+      root.seenDrops.seen[drop.id] = Math.floor(Date.now() / 1000)
+      var g = groups[drop.mediaId]
+      if (!g) {
+        g = groups[drop.mediaId] = {
+          title: drop.title,
+          cover: drop.cover,
+          siteUrl: drop.siteUrl,
+          count: 0,
+          minEp: drop.episode,
+          maxEp: drop.episode
+        }
+      }
+      g.count++
+      if (drop.episode < g.minEp) g.minEp = drop.episode
+      if (drop.episode > g.maxEp) g.maxEp = drop.episode
+    }
+    for (var mediaKey in groups) {
+      if (Object.prototype.hasOwnProperty.call(groups, mediaKey)) {
+        root.sendDropNotification(groups[mediaKey])
+      }
+    }
   }
 
   function sync() {
-    if (!root.aniListUser && !root.malUser) return
+    if (!root.userName) return
+    root.syncGen++
     root.isFetching = true
+    root.syncError = ""
+    root.pendingMALAnime = null
+    root.pendingMALManga = null
+    root.pendingEnrichTarget = null
+    root.enrichQueue = []
 
-    if (root.aniListUser) {
-      root.aniListError = ""
-      var payload = Logic.buildAniListUserQuery(root.aniListUser)
+    if (root.provider === "anilist") {
+      root.aniListGen = root.syncGen
+      var payload = Logic.buildAniListUserQuery(root.userName)
       aniListFetchProc.command = [
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-X", "POST", "https://graphql.anilist.co",
@@ -320,62 +472,47 @@ BarWidget {
       ]
       aniListFetchProc.running = true
     } else {
-      root.rawAniListAnime = []
-      root.rawAniListManga = []
-      root.upcomingList = []
-      root.recentDrops = []
-      root.aniAvatar = ""
-      root.aniListError = ""
-    }
-
-    if (root.malUser) {
-      root.malError = ""
+      root.malGen = root.syncGen
       malFetchProc.command = [
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
-        "https://myanimelist.net/animelist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
+        "https://myanimelist.net/animelist/" + encodeURIComponent(root.userName) + "/load.json?status=1"
       ]
       malFetchProc.running = true
 
       malMangaFetchProc.command = [
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
-        "https://myanimelist.net/mangalist/" + encodeURIComponent(root.malUser) + "/load.json?status=1"
+        "https://myanimelist.net/mangalist/" + encodeURIComponent(root.userName) + "/load.json?status=1"
       ]
       malMangaFetchProc.running = true
 
       malAvatarFetchProc.command = [
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
-        "https://myanimelist.net/profile/" + encodeURIComponent(root.malUser)
+        "https://myanimelist.net/profile/" + encodeURIComponent(root.userName)
       ]
       malAvatarFetchProc.running = true
-    } else {
-      root.rawMALAnime = []
-      root.rawMALManga = []
-      root.malAvatar = ""
-      root.malError = ""
     }
   }
 
   function onAniListFetched(rawText) {
+    if (root.aniListGen !== root.syncGen) return
     root.isFetching = false
-    if (!rawText) return
-
-    var parsed = Logic.parseAniListResponse(rawText, root.seenDrops)
-    if (parsed.error) {
-      root.aniListError = parsed.error
-      root.rawAniListAnime = []
-      root.rawAniListManga = []
-      root.upcomingList = []
-      root.recentDrops = []
-      root.unifyLists()
+    if (!rawText) {
+      root.syncError = "No response from AniList"
       return
     }
 
-    root.aniListError = ""
-    root.rawAniListAnime = parsed.watchingAnime || []
-    root.rawAniListManga = parsed.readingManga || []
+    var parsed = Logic.parseAniListResponse(rawText, root.seenDrops)
+    if (parsed.error) {
+      // Keep cached data visible; surface the error instead of wiping the UI
+      root.syncError = parsed.error
+      return
+    }
+
+    root.watchingList = parsed.watchingAnime || []
+    root.readingManga = parsed.readingManga || []
     root.upcomingList = parsed.upcomingAnime || []
     root.recentDrops = parsed.recentDrops || []
     if (parsed.updatedTrackerState) {
@@ -387,45 +524,132 @@ BarWidget {
     }
     if (parsed.userBanner) root.userBanner = parsed.userBanner
 
-    // Check for newly dropped items that need desktop notifications
-    if (root.notifyOnRelease && parsed.newDrops && parsed.newDrops.length > 0) {
-      if (!root.seenDrops.seen) root.seenDrops.seen = {}
-      for (var i = 0; i < parsed.newDrops.length; i++) {
-        var drop = parsed.newDrops[i]
-        root.sendDropNotification(drop)
-        root.seenDrops.seen[drop.id] = Math.floor(Date.now() / 1000)
-      }
-    }
-    root.saveSeen()
-
-    root.unifyLists()
+    root.notifyNewDrops(parsed.newDrops)
+    root.finalizeSync()
   }
 
   function onMALFetched(rawText) {
-    root.isFetching = false
-    if (!rawText) return
-    var malList = Logic.parseMALListResponse(rawText)
-    if (malList.error) {
-      root.malError = malList.error
-      root.rawMALAnime = []
-    } else {
-      root.malError = ""
-      root.rawMALAnime = malList
+    if (root.malGen !== root.syncGen) return
+    if (!rawText) {
+      root.pendingMALAnime = false
+      root.tryFinalizeMAL()
+      return
     }
-    root.unifyLists()
+    var malList = Logic.parseMALListResponse(rawText)
+    root.pendingMALAnime = malList.error ? false : malList
+    if (malList.error && !root.syncError) root.syncError = malList.error
+    root.tryFinalizeMAL()
   }
 
   function onMALMangaFetched(rawText) {
-    root.isFetching = false
-    if (!rawText) return
-    var malMList = Logic.parseMALMangaResponse(rawText)
-    if (malMList.error) {
-      if (!root.malError) root.malError = malMList.error
-      root.rawMALManga = []
-    } else {
-      root.rawMALManga = malMList
+    if (root.malGen !== root.syncGen) return
+    if (!rawText) {
+      root.pendingMALManga = false
+      root.tryFinalizeMAL()
+      return
     }
-    root.unifyLists()
+    var malMList = Logic.parseMALMangaResponse(rawText)
+    root.pendingMALManga = malMList.error ? false : malMList
+    if (malMList.error && !root.syncError) root.syncError = malMList.error
+    root.tryFinalizeMAL()
+  }
+
+  function tryFinalizeMAL() {
+    if (root.malGen !== root.syncGen) return
+    if (root.pendingMALAnime === null || root.pendingMALManga === null) return
+
+    // On provider fetch failure, keep previously cached lists visible
+    var animeList = root.pendingMALAnime === false ? root.watchingList : root.pendingMALAnime
+    var mangaList = root.pendingMALManga === false ? root.readingManga : root.pendingMALManga
+
+    // Resolve missing or stale airing schedules via AniList (exact MAL ID lookup).
+    // A cached RELEASING show is re-queried once its last known airing time passed,
+    // so countdowns and drop detection keep advancing through the season.
+    var nowSec = Math.floor(Date.now() / 1000)
+    var needed = []
+    if (root.pendingMALAnime !== false) {
+      for (var i = 0; i < animeList.length; i++) {
+        var it = animeList[i]
+        if (it.status !== "RELEASING") continue
+        var cached = root.enrichMap[String(it.mediaId)]
+        var needsRefresh = !cached ||
+          (cached.status === "RELEASING" && (!cached.airingAt || cached.airingAt <= nowSec))
+        if (needsRefresh) {
+          needed.push(it.mediaId)
+        }
+      }
+    }
+
+    if (needed.length > 0) {
+      root.pendingEnrichTarget = { anime: animeList, manga: mangaList }
+      // Chunk IDs into batches of 50 (AniList perPage cap); one request per chunk
+      root.enrichQueue = []
+      for (var c = 0; c < needed.length; c += 50) {
+        root.enrichQueue.push(needed.slice(c, c + 50))
+      }
+      root.fetchNextEnrichChunk()
+      return
+    }
+
+    root.finishMALSync(animeList, mangaList)
+  }
+
+  function fetchNextEnrichChunk() {
+    var chunk = root.enrichQueue[0]
+    enrichProc.command = [
+      "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+      "-X", "POST", "https://graphql.anilist.co",
+      "-H", "Content-Type: application/json",
+      "-H", "User-Agent: OmarchyAniSync/1.0",
+      "-d", Logic.buildAniListMalEnrichQuery(chunk)
+    ]
+    enrichProc.running = true
+  }
+
+  function onEnrichFetched(rawText) {
+    if (root.malGen !== root.syncGen) return
+    // Enrichment failure is non-fatal (lists are still fresh), but surface it
+    // instead of pretending the cycle fully succeeded.
+    if (!rawText && !root.syncError) {
+      root.syncError = "Could not reach AniList for airing schedules"
+    }
+    var map = Logic.parseEnrichResponse(rawText)
+    for (var k in map) {
+      if (Object.prototype.hasOwnProperty.call(map, k)) {
+        root.enrichMap[k] = map[k]
+      }
+    }
+    root.enrichQueue.shift()
+    if (root.enrichQueue.length > 0) {
+      root.fetchNextEnrichChunk()
+      return
+    }
+    var target = root.pendingEnrichTarget
+    root.pendingEnrichTarget = null
+    if (target) root.finishMALSync(target.anime, target.manga)
+  }
+
+  function finishMALSync(animeList, mangaList) {
+    // Any provider fetch failed this cycle: keep the previous lists and
+    // tracker untouched (no prune, no success timestamp, no cache write).
+    if (root.pendingMALAnime === false || root.pendingMALManga === false) {
+      root.isFetching = false
+      root.recalculateUnseen()
+      root.updateTicker()
+      return
+    }
+
+    var res = Logic.applyEnrichment(animeList, root.enrichMap)
+    root.watchingList = res.anime
+    root.upcomingList = res.upcoming
+    root.readingManga = mangaList
+
+    var drops = Logic.detectDrops(res.anime, root.seenDrops)
+    root.recentDrops = drops.recentDrops
+    root.seenDrops = drops.updatedTrackerState
+
+    root.notifyNewDrops(drops.newDrops)
+    root.finalizeSync()
   }
 
   function search(query) {
@@ -454,7 +678,15 @@ BarWidget {
   }
 
   function sendDropNotification(drop) {
-    var title = "New Episode: " + drop.title + " Ep " + drop.episode
+    var title
+    if (drop.count > 1) {
+      var epRange = drop.minEp === drop.maxEp
+        ? "Ep " + drop.minEp
+        : "Ep " + drop.minEp + "\u2013" + drop.maxEp
+      title = drop.count + " New Episodes: " + drop.title + " (" + epRange + ")"
+    } else {
+      title = "New Episode: " + drop.title + " Ep " + drop.maxEp
+    }
     var desc = "Now streaming! Click to open."
     var cmd = [
       "omarchy-notification-send",
@@ -469,20 +701,18 @@ BarWidget {
       cmd.push("--exec", "xdg-open '" + String(drop.siteUrl).replace(/'/g, "'\\''") + "'")
     }
     cmd.push(title, desc)
-    notifyProc.command = cmd
-    notifyProc.running = true
+    Quickshell.execDetached(cmd)
   }
 
   function testNotification() {
-    notifyProc.command = [
+    Quickshell.execDetached([
       "omarchy-notification-send",
       "-g", "󰵪",
       "-u", "normal",
       "--app-name", "AniSync",
       "AniSync Connected!",
       "Notifications are active. You will receive alerts when new episodes air."
-    ]
-    notifyProc.running = true
+    ])
   }
 
   readonly property string barIcon: {
@@ -584,6 +814,5 @@ BarWidget {
 
   Component.onCompleted: {
     ensureDirProc.running = true
-    Qt.callLater(root.sync)
   }
 }

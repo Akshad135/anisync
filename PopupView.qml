@@ -22,15 +22,12 @@ Item {
   property bool isFetching: host ? host.isFetching : false
   property bool isSearching: host ? host.isSearching : false
   property string lastSyncText: host ? host.lastSyncText : ""
-  property string aniListUser: host ? host.aniListUser : ""
-  property string malUser: host ? host.malUser : ""
+  property string provider: host ? host.provider : "anilist"
+  property string userName: host ? host.userName : ""
   property string userAvatar: host ? host.userAvatar : ""
-  property string aniAvatar: host ? host.aniAvatar : ""
-  property string malAvatar: host ? host.malAvatar : ""
   property string userBanner: host ? host.userBanner : ""
   property string customBanner: host ? host.customBanner : ""
-  property string aniListError: host ? host.aniListError : ""
-  property string malError: host ? host.malError : ""
+  property string syncError: host ? host.syncError : ""
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
   property int checkIntervalMins: host ? host.checkIntervalMins : 30
@@ -46,19 +43,8 @@ Item {
   }
 
   // Computed properties
-  readonly property bool isDualAccount: (root.aniListUser.trim().length > 0 && root.malUser.trim().length > 0)
-  readonly property bool canSync: (root.aniListUser.trim().length > 0 || root.malUser.trim().length > 0)
-  readonly property string displayUserName: {
-    if (root.isDualAccount) {
-      if (root.aniListUser.trim().toLowerCase() === root.malUser.trim().toLowerCase()) {
-        return root.aniListUser.trim()
-      }
-      return root.aniListUser.trim() + " · " + root.malUser.trim()
-    }
-    if (root.aniListUser.trim().length > 0) return root.aniListUser.trim()
-    if (root.malUser.trim().length > 0) return root.malUser.trim()
-    return "AniSync"
-  }
+  readonly property bool canSync: root.draftUserName.trim().length > 0
+  readonly property string displayUserName: root.userName.trim().length > 0 ? root.userName.trim() : "AniSync"
 
   readonly property string activeBanner: {
     if (root.customBanner && root.customBanner.trim().length > 0) return root.customBanner.trim()
@@ -81,6 +67,26 @@ Item {
   property string activeTabId: "anime"
   property string previousTabId: "anime"
   property bool isSettingsOpen: false
+
+  // Draft form state: edited freely in Settings, only committed on "Save & Sync".
+  // Browsing tabs or typing never touches the live provider/userName state.
+  property string draftProvider: root.provider
+  property string draftUserName: root.userName
+  property string draftCustomBanner: root.customBanner
+
+  // Re-syncs drafts from committed state. Called when the settings panel opens
+  // and whenever the whole popup reopens, so abandoned edits never leak.
+  function beginDrafts() {
+    root.draftProvider = root.provider
+    root.draftUserName = root.userName
+    root.draftCustomBanner = root.customBanner
+    userInput.text = root.userName
+    settingsPanelItem.activeAccountTab = root.provider || "anilist"
+  }
+
+  onIsSettingsOpenChanged: {
+    if (root.isSettingsOpen) root.beginDrafts()
+  }
 
   onShowAnimeChanged: {
     if (!root.showAnime && root.activeTabId === "anime") {
@@ -154,79 +160,8 @@ Item {
         anchors.rightMargin: Style.space(8)
         spacing: Style.space(8)
 
-        // 1) DUAL OVERLAPPING AVATARS (if both accounts connected)
-        Item {
-          visible: root.isDualAccount
-          width: Style.space(46)
-          height: Style.space(32)
-
-          // AniList Bubble (Left)
-          Rectangle {
-            width: Style.space(28)
-            height: Style.space(28)
-            radius: width / 2
-            anchors.left: parent.left
-            anchors.top: parent.top
-            z: 2
-            clip: true
-            color: Util.alpha(colAccent, 0.2)
-            border.color: Util.alpha(colAccent, 0.7)
-            border.width: 1.5
-
-            Image {
-              anchors.fill: parent
-              source: root.aniAvatar || root.userAvatar
-              fillMode: Image.PreserveAspectCrop
-              visible: (root.aniAvatar.length > 0 || root.userAvatar.length > 0)
-              asynchronous: true
-            }
-
-            Image {
-              anchors.centerIn: parent
-              visible: !root.aniAvatar && !root.userAvatar
-              source: Qt.resolvedUrl("assets/anilist.svg")
-              width: Style.space(16)
-              height: Style.space(16)
-              sourceSize: Qt.size(16, 16)
-            }
-          }
-
-          // MAL Bubble (Overlapping Right)
-          Rectangle {
-            width: Style.space(28)
-            height: Style.space(28)
-            radius: width / 2
-            anchors.left: parent.left
-            anchors.leftMargin: Style.space(16)
-            anchors.bottom: parent.bottom
-            z: 1
-            clip: true
-            color: Util.alpha("#2e51a2", 0.3)
-            border.color: Util.alpha(colForeground, 0.35)
-            border.width: 1.5
-
-            Image {
-              anchors.fill: parent
-              source: root.malAvatar
-              fillMode: Image.PreserveAspectCrop
-              visible: root.malAvatar.length > 0
-              asynchronous: true
-            }
-
-            Image {
-              anchors.centerIn: parent
-              visible: !root.malAvatar || root.malAvatar.length === 0
-              source: Qt.resolvedUrl("assets/myanimelist.svg")
-              width: Style.space(16)
-              height: Style.space(16)
-              sourceSize: Qt.size(16, 16)
-            }
-          }
-        }
-
-        // 2) SINGLE AVATAR (if single account or no account)
+        // 1) SINGLE AVATAR (provider-aware)
         Rectangle {
-          visible: !root.isDualAccount
           width: Style.space(32)
           height: Style.space(32)
           radius: width / 2
@@ -246,7 +181,7 @@ Item {
           Image {
             anchors.centerIn: parent
             visible: !root.userAvatar || root.userAvatar.length === 0
-            source: root.malUser.length > 0 ? Qt.resolvedUrl("assets/myanimelist.svg") : (root.aniListUser.length > 0 ? Qt.resolvedUrl("assets/anilist.svg") : Qt.resolvedUrl("assets/anisync.svg"))
+            source: root.provider === "mal" ? Qt.resolvedUrl("assets/myanimelist.svg") : (root.userName.length > 0 ? Qt.resolvedUrl("assets/anilist.svg") : Qt.resolvedUrl("assets/anisync.svg"))
             width: Style.space(18)
             height: Style.space(18)
             sourceSize: Qt.size(18, 18)
@@ -267,23 +202,23 @@ Item {
               font.bold: true
               color: colForeground
               elide: Text.ElideRight
-              Layout.maximumWidth: root.isDualAccount ? Style.space(160) : Style.space(220)
+              Layout.maximumWidth: Style.space(220)
             }
 
-            // Dual Account Tag
+            // Provider Tag
             Rectangle {
-              visible: root.isDualAccount
               height: Style.space(16)
-              width: dualTagText.implicitWidth + Style.space(8)
+              width: providerTagText.implicitWidth + Style.space(8)
               radius: 4
               color: Util.alpha(colAccent, 0.15)
               border.color: Util.alpha(colAccent, 0.4)
               border.width: 1
+              visible: root.userName.trim().length > 0
 
               Text {
-                id: dualTagText
+                id: providerTagText
                 anchors.centerIn: parent
-                text: "AL + MAL"
+                text: root.provider === "mal" ? "MAL" : "AniList"
                 font.family: root.fontFamily
                 font.pixelSize: 9
                 font.bold: true
@@ -293,10 +228,10 @@ Item {
           }
 
           Text {
-            text: isFetching 
-              ? "Syncing..." 
-              : (lastSyncText.length > 0 
-                  ? (root.isDualAccount ? ("Synced: AniList + MAL · " + lastSyncText) : ("Updated " + lastSyncText))
+            text: isFetching
+              ? "Syncing..."
+              : (lastSyncText.length > 0
+                  ? ("Updated " + lastSyncText)
                   : "Ready")
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -372,6 +307,28 @@ Item {
             }
           }
         }
+      }
+    }
+
+    // ------------------------------------------------------------- Sync Error Banner
+    Rectangle {
+      Layout.fillWidth: true
+      height: syncErrorText.implicitHeight + Style.space(10)
+      radius: Style.cornerRadius
+      color: Util.alpha("#f87171", 0.12)
+      border.color: Util.alpha("#f87171", 0.4)
+      border.width: 1
+      visible: root.syncError.length > 0 && !root.isSettingsOpen
+
+      Text {
+        id: syncErrorText
+        anchors.centerIn: parent
+        width: parent.width - Style.space(16)
+        text: "⚠ " + root.syncError
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        color: "#f87171"
+        elide: Text.ElideRight
       }
     }
 
@@ -584,7 +541,7 @@ Item {
                 }
 
                 Text {
-                  visible: modelData.source === "AniList + MAL"
+                  visible: false
                   text: "AniList+MAL"
                   font.family: root.fontFamily
                   font.pixelSize: 9
@@ -704,7 +661,7 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: root.aniListUser || root.malUser ? "No currently watching anime found" : "Set your username in Settings"
+              text: root.userName ? "No currently watching anime found" : "Set your username in Settings"
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               color: colDim
@@ -712,9 +669,9 @@ Item {
 
             Button {
               Layout.alignment: Qt.AlignHCenter
-              text: root.aniListUser || root.malUser ? "Refresh" : "Open Settings"
+              text: root.userName ? "Refresh" : "Open Settings"
               onClicked: {
-                if (root.aniListUser || root.malUser) {
+                if (root.userName) {
                   if (host && host.sync) host.sync()
                 } else {
                   root.isSettingsOpen = true
@@ -905,7 +862,7 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: root.aniListUser || root.malUser ? "No currently reading manga found" : "Set your username in Settings"
+              text: root.userName ? "No currently reading manga found" : "Set your username in Settings"
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
               color: colDim
@@ -1043,7 +1000,10 @@ Item {
                   }
 
                   Text {
-                    text: modelData.nextEpisode ? ("Ep " + modelData.nextEpisode + " " + Logic.formatCountdown(modelData.airingAt)) : (modelData.status || "")
+                    text: {
+                      var dummy = root.tickCounter
+                      return modelData.nextEpisode ? ("Ep " + modelData.nextEpisode + " " + Logic.formatCountdown(modelData.airingAt)) : (modelData.status || "")
+                    }
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                     color: colDim
@@ -1136,7 +1096,7 @@ Item {
       Layout.fillWidth: true
       Layout.fillHeight: true
 
-      property string activeAccountTab: "anilist"
+      property string activeAccountTab: root.provider || "anilist"
 
       Flickable {
         anchors.fill: parent
@@ -1216,7 +1176,7 @@ Item {
                       height: 5
                       radius: 2.5
                       color: (settingsPanelItem.activeAccountTab === "anilist") ? "#12131a" : "#4ade80"
-                      visible: root.aniListUser.trim().length > 0
+                      visible: root.draftProvider === "anilist" && root.draftUserName.trim().length > 0
                     }
                   }
 
@@ -1225,7 +1185,10 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: settingsPanelItem.activeAccountTab = "anilist"
+                    onClicked: {
+                      settingsPanelItem.activeAccountTab = "anilist"
+                      root.draftProvider = "anilist"
+                    }
                   }
                 }
 
@@ -1263,7 +1226,7 @@ Item {
                       height: 5
                       radius: 2.5
                       color: (settingsPanelItem.activeAccountTab === "mal") ? "#12131a" : "#4ade80"
-                      visible: root.malUser.trim().length > 0
+                      visible: root.draftProvider === "mal" && root.draftUserName.trim().length > 0
                     }
                   }
 
@@ -1272,7 +1235,10 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: settingsPanelItem.activeAccountTab = "mal"
+                    onClicked: {
+                      settingsPanelItem.activeAccountTab = "mal"
+                      root.draftProvider = "mal"
+                    }
                   }
                 }
 
@@ -1325,65 +1291,50 @@ Item {
             }
 
             // Active Sub-Tab Form Field
-            // 1) AniList
+            // 1) Username (shared between AniList and MAL provider modes)
             ColumnLayout {
               Layout.fillWidth: true
               spacing: Style.space(3)
-              visible: settingsPanelItem.activeAccountTab === "anilist"
+              visible: settingsPanelItem.activeAccountTab === "anilist" || settingsPanelItem.activeAccountTab === "mal"
 
               TextField {
-                id: aniInput
+                id: userInput
                 Layout.fillWidth: true
-                text: root.aniListUser
-                placeholderText: "Enter AniList username (e.g. frizzy135)"
+                text: root.draftUserName
+                placeholderText: root.draftProvider === "mal"
+                  ? "Enter MyAnimeList username (e.g. Xinil)"
+                  : "Enter AniList username (e.g. frizzy135)"
                 activeFocusOnPress: true
 
                 onTextEdited: {
-                  if (host && host.updateSetting) host.updateSetting("aniListUser", text.trim())
+                  root.draftUserName = text.trim()
                 }
               }
 
               Text {
                 Layout.fillWidth: true
                 text: {
-                  if (root.aniListError && root.aniListError.length > 0) return "⚠ " + root.aniListError
-                  if (root.aniListUser.trim().length > 0) return "✓ Connected · Syncs countdown schedules, covers & banner"
-                  return "Syncs your watching/reading lists and exact countdowns"
+                  var committed = root.draftProvider === root.provider && root.draftUserName === root.userName
+                  if (root.syncError.length > 0 && committed) return "⚠ " + root.syncError
+                  if (committed && root.draftUserName.trim().length > 0) {
+                    return root.draftProvider === "mal"
+                      ? "✓ Connected · Live countdowns & alerts via AniList schedule lookup"
+                      : "✓ Connected · Syncs countdown schedules, covers & banner"
+                  }
+                  if (!committed && root.draftUserName.trim().length > 0) {
+                    return "Click \"Save & Sync\" to apply this account"
+                  }
+                  return root.draftProvider === "mal"
+                    ? "Syncs your MAL watchlist; airing times resolved from AniList"
+                    : "Syncs your watching/reading lists and exact countdowns"
                 }
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
-                color: (root.aniListError && root.aniListError.length > 0) ? "#f87171" : (root.aniListUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25))
-              }
-            }
-
-            // 2) MAL
-            ColumnLayout {
-              Layout.fillWidth: true
-              spacing: Style.space(3)
-              visible: settingsPanelItem.activeAccountTab === "mal"
-
-              TextField {
-                id: malInput
-                Layout.fillWidth: true
-                text: root.malUser
-                placeholderText: "Enter MyAnimeList username (e.g. Xinil)"
-                activeFocusOnPress: true
-
-                onTextEdited: {
-                  if (host && host.updateSetting) host.updateSetting("malUser", text.trim())
+                color: {
+                  var committed = root.draftProvider === root.provider && root.draftUserName === root.userName
+                  if (root.syncError.length > 0 && committed) return "#f87171"
+                  return root.draftUserName.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
                 }
-              }
-
-              Text {
-                Layout.fillWidth: true
-                text: {
-                  if (root.malError && root.malError.length > 0) return "⚠ " + root.malError
-                  if (root.malUser.trim().length > 0) return "✓ Connected · Merged with AniList into unified watchlist"
-                  return "Optional · Can be combined with AniList simultaneously"
-                }
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                color: (root.malError && root.malError.length > 0) ? "#f87171" : (root.malUser.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25))
               }
             }
 
@@ -1396,23 +1347,23 @@ Item {
               TextField {
                 id: bannerInput
                 Layout.fillWidth: true
-                text: root.customBanner
+                text: root.draftCustomBanner
                 placeholderText: "Custom banner image URL or local file path"
                 activeFocusOnPress: true
 
                 onTextEdited: {
-                  if (host && host.updateSetting) host.updateSetting("customBanner", text.trim())
+                  root.draftCustomBanner = text.trim()
                 }
               }
 
               Text {
                 Layout.fillWidth: true
-                text: root.customBanner.trim().length > 0 
+                text: root.draftCustomBanner.trim().length > 0
                   ? "✓ Custom banner image configured" 
                   : "Leave empty to auto-sync your account profile banner"
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
-                color: root.customBanner.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
+                color: root.draftCustomBanner.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
               }
             }
           }
@@ -1795,10 +1746,12 @@ Item {
                 cursorShape: root.canSync ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: {
                   if (root.canSync && host) {
+                    // Commit the drafted form; BarWidget wipes old account state
+                    // only when provider/userName actually changed
                     if (host.updateSetting) {
-                      host.updateSetting("aniListUser", aniInput.text.trim())
-                      host.updateSetting("malUser", malInput.text.trim())
-                      host.updateSetting("customBanner", bannerInput.text.trim())
+                      host.updateSetting("provider", root.draftProvider)
+                      host.updateSetting("userName", root.draftUserName.trim())
+                      host.updateSetting("customBanner", root.draftCustomBanner)
                     }
                     if (host.sync) host.sync()
                   }

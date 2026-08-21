@@ -21,8 +21,8 @@
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "aniListUser": "akshad",
-      "malUser": "",
+      "provider": "anilist",
+      "userName": "akshad",
       "checkIntervalMins": 30,
       "enableAnimeNotifications": true,
       "enableMangaNotifications": true
