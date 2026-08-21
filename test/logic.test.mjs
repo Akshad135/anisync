@@ -373,6 +373,49 @@ test("state transition detects newly aired episodes across syncs and offline per
   assert.equal(syncFinale.newDrops[0].episode, 12)
 })
 
+test("finale after multi-week gap catches up every missed episode up to the total", () => {
+  const showId = 999
+  const payload = {
+    data: {
+      user: { name: "testuser" },
+      anime: {
+        lists: [
+          {
+            name: "Watching",
+            status: "CURRENT",
+            entries: [
+              {
+                id: 1,
+                progress: 12,
+                media: {
+                  id: showId,
+                  title: { english: "Finished Show" },
+                  status: "FINISHED",
+                  episodes: 14,
+                  nextAiringEpisode: null
+                }
+              }
+            ]
+          }
+        ]
+      },
+      manga: { lists: [] }
+    }
+  }
+
+  // Last seen next-episode was 13; eps 13 and 14 aired while offline
+  const res = Logic.parseAniListResponse(payload, { seen: {}, lastEp: { [showId]: 13 }, initialized: true })
+  assert.equal(res.newDrops.length, 2)
+  assert.deepEqual(res.newDrops.map(d => d.episode).sort(), [13, 14])
+
+  // Unknown total degrades to previous behavior (only prevEp alerted)
+  const noTotal = JSON.parse(JSON.stringify(payload))
+  delete noTotal.data.anime.lists[0].entries[0].media.episodes
+  const res2 = Logic.parseAniListResponse(noTotal, { seen: {}, lastEp: { [showId]: 13 }, initialized: true })
+  assert.equal(res2.newDrops.length, 1)
+  assert.equal(res2.newDrops[0].episode, 13)
+})
+
 test("upcomingList is strictly sorted by closest chronological airing time across all anime", () => {
   const now = Math.floor(Date.now() / 1000)
   const mockMulti = {

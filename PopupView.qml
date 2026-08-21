@@ -15,7 +15,6 @@ Item {
   property bool showAnime: host ? host.showAnime : true
   property bool showManga: host ? host.showManga : true
   property var upcomingList: host ? host.upcomingList : []
-  property var recentDrops: host ? host.recentDrops : []
   property var watchingList: host ? host.watchingList : []
   property var readingManga: host ? host.readingManga : []
   property var searchResults: host ? host.searchResults : []
@@ -31,7 +30,6 @@ Item {
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
   property int checkIntervalMins: host ? host.checkIntervalMins : 30
-  property int unseenCount: host ? host.unseenCount : 0
 
   // Tick every 15s to refresh countdown strings
   property int tickCounter: 0

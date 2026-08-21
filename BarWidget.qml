@@ -23,7 +23,6 @@ BarWidget {
   property int checkIntervalMins: 30
 
   property var upcomingList: []
-  property var recentDrops: []
   property var watchingList: []
   property var readingManga: []
   property var searchResults: []
@@ -50,7 +49,6 @@ BarWidget {
   property bool isSearching: false
   property string lastSyncText: ""
   property string tickerText: "Anime"
-  property int unseenCount: 0
   property string userAvatar: ""
   property string aniAvatar: ""
   property string malAvatar: ""
@@ -208,14 +206,12 @@ BarWidget {
           root.watchingList = c.watchingAnime || []
           root.readingManga = c.readingManga || []
           root.upcomingList = c.upcomingAnime || []
-          root.recentDrops = c.recentDrops || []
           root.enrichMap = c.malToAnilist || {}
           root.userAvatar = c.avatar || ""
           root.aniAvatar = root.provider === "anilist" ? (c.avatar || "") : ""
           root.malAvatar = root.provider === "mal" ? (c.avatar || "") : ""
           root.userBanner = c.banner || ""
           root.lastSyncText = c.lastSyncText || ""
-          root.recalculateUnseen()
           root.updateTicker()
         }
       } catch (e) {}
@@ -247,7 +243,6 @@ BarWidget {
       watchingAnime: root.watchingList,
       readingManga: root.readingManga,
       upcomingAnime: root.upcomingList,
-      recentDrops: root.recentDrops,
       malToAnilist: root.enrichMap,
       tracker: root.seenDrops
     }
@@ -260,8 +255,6 @@ BarWidget {
     root.watchingList = []
     root.readingManga = []
     root.upcomingList = []
-    root.recentDrops = []
-    root.unseenCount = 0
     root.seenDrops = { seen: {}, lastEp: {}, initialized: false }
     root.enrichMap = {}
     root.pendingMALAnime = null
@@ -276,37 +269,6 @@ BarWidget {
     root.syncError = ""
     root.tickerText = "Anime"
     root.saveCache()
-  }
-
-  function markSeen(dropId) {
-    if (!root.seenDrops.seen) root.seenDrops.seen = {}
-    root.seenDrops.seen[dropId] = Math.floor(Date.now() / 1000)
-    root.saveCache()
-    root.recalculateUnseen()
-  }
-
-  function markAllSeen() {
-    var nowSec = Math.floor(Date.now() / 1000)
-    if (!root.seenDrops.seen) root.seenDrops.seen = {}
-    for (var i = 0; i < root.recentDrops.length; i++) {
-      root.seenDrops.seen[root.recentDrops[i].id] = nowSec
-    }
-    root.saveCache()
-    root.recalculateUnseen()
-  }
-
-  function recalculateUnseen() {
-    var count = 0
-    var drops = root.recentDrops
-    var seenMap = (root.seenDrops && root.seenDrops.seen) ? root.seenDrops.seen : (root.seenDrops || {})
-    for (var i = 0; i < drops.length; i++) {
-      var drop = drops[i]
-      drop.isNew = !seenMap[drop.id]
-      if (drop.isNew) count++
-    }
-    root.recentDrops = drops
-    root.unseenCount = count
-    root.updateTicker()
   }
 
   // ------------------------------------------------------------- Data Fetching
@@ -356,6 +318,7 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (root.malGen !== root.syncGen) return
         var av = Logic.parseMALUserAvatar(String(text || ""))
         if (av) {
           root.malAvatar = av
@@ -415,7 +378,6 @@ BarWidget {
     var h12 = hours % 12 || 12
     var mStr = mins < 10 ? "0" + mins : String(mins)
     root.lastSyncText = h12 + ":" + mStr + " " + ampm
-    root.recalculateUnseen()
     root.updateTicker()
     root.saveCache()
   }
@@ -463,36 +425,34 @@ BarWidget {
     if (root.provider === "anilist") {
       root.aniListGen = root.syncGen
       var payload = Logic.buildAniListUserQuery(root.userName)
-      aniListFetchProc.command = [
+      // exec() restarts the process if a previous sync is still in flight;
+      // command= + running=true would silently no-op on a live process
+      aniListFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-X", "POST", "https://graphql.anilist.co",
         "-H", "Content-Type: application/json",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-d", payload
-      ]
-      aniListFetchProc.running = true
+      ])
     } else {
       root.malGen = root.syncGen
-      malFetchProc.command = [
+      malFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/animelist/" + encodeURIComponent(root.userName) + "/load.json?status=1"
-      ]
-      malFetchProc.running = true
+      ])
 
-      malMangaFetchProc.command = [
+      malMangaFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/mangalist/" + encodeURIComponent(root.userName) + "/load.json?status=1"
-      ]
-      malMangaFetchProc.running = true
+      ])
 
-      malAvatarFetchProc.command = [
+      malAvatarFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/profile/" + encodeURIComponent(root.userName)
-      ]
-      malAvatarFetchProc.running = true
+      ])
     }
   }
 
@@ -514,7 +474,6 @@ BarWidget {
     root.watchingList = parsed.watchingAnime || []
     root.readingManga = parsed.readingManga || []
     root.upcomingList = parsed.upcomingAnime || []
-    root.recentDrops = parsed.recentDrops || []
     if (parsed.updatedTrackerState) {
       root.seenDrops = parsed.updatedTrackerState
     }
@@ -596,14 +555,13 @@ BarWidget {
 
   function fetchNextEnrichChunk() {
     var chunk = root.enrichQueue[0]
-    enrichProc.command = [
+    enrichProc.exec([
       "curl", "-fsS", "--proto", "=https", "--max-time", "15",
       "-X", "POST", "https://graphql.anilist.co",
       "-H", "Content-Type: application/json",
       "-H", "User-Agent: OmarchyAniSync/1.0",
       "-d", Logic.buildAniListMalEnrichQuery(chunk)
-    ]
-    enrichProc.running = true
+    ])
   }
 
   function onEnrichFetched(rawText) {
@@ -634,7 +592,6 @@ BarWidget {
     // tracker untouched (no prune, no success timestamp, no cache write).
     if (root.pendingMALAnime === false || root.pendingMALManga === false) {
       root.isFetching = false
-      root.recalculateUnseen()
       root.updateTicker()
       return
     }
@@ -645,7 +602,6 @@ BarWidget {
     root.readingManga = mangaList
 
     var drops = Logic.detectDrops(res.anime, root.seenDrops)
-    root.recentDrops = drops.recentDrops
     root.seenDrops = drops.updatedTrackerState
 
     root.notifyNewDrops(drops.newDrops)
@@ -656,14 +612,13 @@ BarWidget {
     if (!query || query.trim().length === 0) return
     root.isSearching = true
     var payload = Logic.buildAniListSearchQuery(query.trim())
-    searchProc.command = [
+    searchProc.exec([
       "curl", "-fsS", "--proto", "=https", "--max-time", "10",
       "-X", "POST", "https://graphql.anilist.co",
       "-H", "Content-Type: application/json",
       "-H", "User-Agent: OmarchyAniSync/1.0",
       "-d", payload
-    ]
-    searchProc.running = true
+    ])
   }
 
   function clearSearch() {
@@ -715,16 +670,9 @@ BarWidget {
     ])
   }
 
-  readonly property string barIcon: {
-    if (root.unseenCount > 0) return "󱅫 "
-    return "󰵪 "
-  }
+  readonly property string barIcon: "󰵪 "
 
   function updateTicker() {
-    if (root.unseenCount > 0) {
-      root.tickerText = root.unseenCount + " New"
-      return
-    }
     if (root.upcomingList && root.upcomingList.length > 0) {
       var next = root.upcomingList[0]
       root.tickerText = Logic.formatShortTicker(next)
@@ -764,10 +712,7 @@ BarWidget {
     anchors.fill: parent
     bar: root.bar
     text: root.barIcon + (root.tickerText || "Anime")
-    active: root.unseenCount > 0
-    useActiveColor: true
-    activeColor: colAccent
-    tooltipText: root.unseenCount > 0 ? (root.unseenCount + " new episode(s) available") : (root.tickerText ? root.tickerText : "AniSync")
+    tooltipText: root.tickerText ? root.tickerText : "AniSync"
 
     onPressed: function(b) {
       if (b === Qt.RightButton) {

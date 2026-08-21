@@ -375,23 +375,28 @@ function detectDrops(watchingAnime, trackerState) {
           }
         }
       } else if (currentNextEp === null && item.status === "FINISHED" && prevEp !== "FINISHED") {
-        // Final episode aired and show completed
-        var finKey = item.mediaId + ":" + prevEp
-        var finIsNew = !seenMap[finKey]
-        var finDrop = {
-          id: finKey,
-          mediaId: item.mediaId,
-          type: "ANIME",
-          title: item.title,
-          episode: prevEp,
-          airedAt: nowSec,
-          cover: item.cover,
-          siteUrl: item.siteUrl,
-          isNew: finIsNew
-        }
-        recentDrops.push(finDrop)
-        if (finIsNew) {
-          newDrops.push(finDrop)
+        // Show completed while we were away: catch up every episode after
+        // prevEp, up to the known total (falls back to prevEp alone when the
+        // total episode count is unknown).
+        var lastAired = (item.totalEpisodes && item.totalEpisodes > prevEp) ? item.totalEpisodes : prevEp
+        for (var finEp = prevEp; finEp <= lastAired; finEp++) {
+          var finKey = item.mediaId + ":" + finEp
+          var finIsNew = !seenMap[finKey]
+          var finDrop = {
+            id: finKey,
+            mediaId: item.mediaId,
+            type: "ANIME",
+            title: item.title,
+            episode: finEp,
+            airedAt: nowSec,
+            cover: item.cover,
+            siteUrl: item.siteUrl,
+            isNew: finIsNew
+          }
+          recentDrops.push(finDrop)
+          if (finIsNew) {
+            newDrops.push(finDrop)
+          }
         }
       }
     }
