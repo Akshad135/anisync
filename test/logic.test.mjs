@@ -351,13 +351,50 @@ test("parseSimklCalendar flattens CDN rows into simkl and mal keyed schedules", 
   ]))
 
   assert.ok(cal["s1"])
-  assert.equal(cal["s1"].episode, 1175)
-  assert.equal(typeof cal["s1"].airingAt, "number")
+  assert.equal(cal["s1"].length, 1)
+  assert.equal(cal["s1"][0].episode, 1175)
+  assert.equal(typeof cal["s1"][0].airingAt, "number")
   assert.deepEqual(cal["m21"], cal["s1"])
 
   // Garbage input yields an empty map, never a throw
   assert.deepEqual(Logic.parseSimklCalendar(null), {})
   assert.deepEqual(Logic.parseSimklCalendar("nope"), {})
+})
+
+test("parseSimklResponse picks earliest upcoming episode when calendar has multiple future episodes", () => {
+  const now = Math.floor(Date.now() / 1000)
+  const mock = {
+    anime: [
+      {
+        status: "watching",
+        watched_episodes_count: 0,
+        total_episodes_count: 12,
+        not_aired_episodes_count: 4,
+        show: {
+          title: "Grand Blue Season 3",
+          poster: "",
+          ids: { simkl: 2886886, mal: "62542" }
+        }
+      }
+    ]
+  }
+
+  const calendarMap = {
+    s2886886: [
+      { episode: 8, airingAt: now - 3600, siteUrl: "https://simkl.com/anime/2886886/grand-blue-season-3/episode-8/" },
+      { episode: 9, airingAt: now + (6 * 86400), siteUrl: "https://simkl.com/anime/2886886/grand-blue-season-3/episode-9/" },
+      { episode: 10, airingAt: now + (13 * 86400), siteUrl: "https://simkl.com/anime/2886886/grand-blue-season-3/episode-10/" },
+      { episode: 12, airingAt: now + (27 * 86400), siteUrl: "https://simkl.com/anime/2886886/grand-blue-season-3/episode-12/" }
+    ]
+  }
+
+  const parsed = Logic.parseSimklResponse(mock, {}, calendarMap)
+  assert.equal(parsed.error, null)
+  assert.equal(parsed.watchingAnime.length, 1)
+  assert.equal(parsed.watchingAnime[0].nextEpisode, 9)
+  assert.equal(parsed.watchingAnime[0].airingAt, now + (6 * 86400))
+  assert.equal(parsed.upcomingAnime.length, 1)
+  assert.equal(parsed.upcomingAnime[0].nextEpisode, 9)
 })
 
 test("simklPosterUrl builds absolute poster URLs and falls back to placeholder", () => {

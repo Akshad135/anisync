@@ -80,6 +80,7 @@ Item {
   property string activeTabId: "anime"
   property string previousTabId: "anime"
   property bool isSettingsOpen: false
+  property string selectedProviderTab: root.provider || "anilist"
 
   // Draft form state: edited freely in Settings, only committed on "Save & Sync".
   // Browsing tabs or typing never touches the live provider/userName state.
@@ -90,14 +91,24 @@ Item {
   // Re-syncs drafts from committed state. Called when the settings panel opens
   // and whenever the whole popup reopens, so abandoned edits never leak.
   function beginDrafts() {
-    root.draftProvider = root.provider
-    root.draftUserName = root.userName
+    if (root.simklLinking || root.simklUserCode.length > 0) {
+      root.selectedProviderTab = "simkl"
+    } else if (!root.selectedProviderTab) {
+      root.selectedProviderTab = root.provider || "anilist"
+    }
+    root.draftProvider = root.selectedProviderTab
+    settingsPanelItem.activeAccountTab = root.selectedProviderTab
+    if (root.selectedProviderTab === "simkl") {
+      root.draftUserName = ""
+    } else if (root.selectedProviderTab === root.provider) {
+      root.draftUserName = root.userName
+      userInput.text = root.userName
+    }
     root.draftCustomBanner = root.customBanner
-    userInput.text = root.userName
-    settingsPanelItem.activeAccountTab = root.provider || "anilist"
   }
 
   onProviderChanged: {
+    root.selectedProviderTab = root.provider || "anilist"
     root.draftProvider = root.provider
     if (root.provider === "simkl") {
       settingsPanelItem.activeAccountTab = "simkl"
@@ -496,26 +507,6 @@ Item {
         spacing: Style.space(6)
         model: root.watchingList
 
-        // Empty state: fresh Simkl accounts (or any provider with nothing
-        // in progress) see guidance instead of a blank panel.
-        Text {
-          anchors.centerIn: parent
-          width: parent.width - Style.space(40)
-          horizontalAlignment: Text.AlignHCenter
-          wrapMode: Text.Wrap
-          visible: root.watchingList.length === 0 && !root.isFetching
-          text: {
-            if (root.syncError.length > 0) return "⚠ " + root.syncError
-            if (root.provider === "simkl") {
-              return "Nothing in your Simkl watching list.\nAdd anime or shows at simkl.com and sync."
-            }
-            return "Your watching list is empty."
-          }
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.caption
-          color: Qt.lighter(colDim, 1.25)
-        }
-
         delegate: Rectangle {
           id: animeCard
           width: animeListView.width
@@ -707,7 +698,8 @@ Item {
 
           ColumnLayout {
             anchors.centerIn: parent
-            spacing: Style.space(6)
+            spacing: Style.space(8)
+            width: parent.width - Style.space(40)
 
             Text {
               Layout.alignment: Qt.AlignHCenter
@@ -719,17 +711,30 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: root.userName ? "No currently watching anime found" : "Set your username in Settings"
+              Layout.fillWidth: true
+              horizontalAlignment: Text.AlignHCenter
+              wrapMode: Text.Wrap
+              text: {
+                if (root.syncError.length > 0) return "⚠ " + root.syncError
+                if (root.provider === "simkl") {
+                  return root.simklToken.length > 0
+                    ? "Nothing in your Simkl watching list.\nAdd anime or shows at simkl.com and sync."
+                    : "Connect your Simkl account in Settings to start tracking."
+                }
+                return root.userName.trim().length > 0
+                  ? "No currently watching anime found."
+                  : "Set your username in Settings to get started."
+              }
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              color: colDim
+              font.pixelSize: Style.font.bodySmall
+              color: root.syncError.length > 0 ? "#f87171" : colDim
             }
 
             Button {
               Layout.alignment: Qt.AlignHCenter
-              text: root.userName ? "Refresh" : "Open Settings"
+              text: (root.userName.trim().length > 0 || (root.provider === "simkl" && root.simklToken.length > 0)) ? "Refresh" : "Open Settings"
               onClicked: {
-                if (root.userName) {
+                if (root.userName.trim().length > 0 || (root.provider === "simkl" && root.simklToken.length > 0)) {
                   if (host && host.sync) host.sync()
                 } else {
                   root.isSettingsOpen = true
@@ -920,10 +925,16 @@ Item {
 
             Text {
               Layout.alignment: Qt.AlignHCenter
-              text: root.userName ? "No currently reading manga found" : "Set your username in Settings"
+              Layout.fillWidth: true
+              horizontalAlignment: Text.AlignHCenter
+              wrapMode: Text.Wrap
+              text: {
+                if (root.syncError.length > 0) return "⚠ " + root.syncError
+                return root.userName.trim().length > 0 ? "No currently reading manga found." : "Set your username in Settings to get started."
+              }
               font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              color: colDim
+              font.pixelSize: Style.font.bodySmall
+              color: root.syncError.length > 0 ? "#f87171" : colDim
             }
           }
         }
@@ -1259,6 +1270,7 @@ Item {
                       hoverEnabled: true
                       cursorShape: Qt.PointingHandCursor
                       onClicked: {
+                        root.selectedProviderTab = modelData.id
                         settingsPanelItem.activeAccountTab = modelData.id
                         root.draftProvider = modelData.id
                         if (modelData.id === "simkl") {
@@ -1447,65 +1459,88 @@ Item {
                   color: colDim
                 }
 
-                // GitHub-style digit boxes; click anywhere to copy the code
-                RowLayout {
+                // Prominent PIN Code Box with mouse text selection & instant copy button
+                Rectangle {
                   Layout.alignment: Qt.AlignHCenter
-                  spacing: Style.space(4)
+                  Layout.preferredWidth: Style.space(240)
+                  Layout.preferredHeight: Style.space(48)
+                  radius: Style.cornerRadius
+                  color: Util.alpha(colForeground, 0.06)
+                  border.color: Util.alpha(colAccent, 0.4)
+                  border.width: 1
 
-                  Repeater {
-                    model: root.simklUserCode.length > 0 ? root.simklUserCode.split("") : []
+                  RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: Style.space(16)
+                    anchors.rightMargin: Style.space(8)
+                    spacing: Style.space(10)
+
+                    TextInput {
+                      id: pinCodeInput
+                      Layout.fillWidth: true
+                      text: root.simklUserCode
+                      readOnly: true
+                      selectByMouse: true
+                      horizontalAlignment: TextInput.AlignHCenter
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.title
+                      font.bold: true
+                      font.letterSpacing: 4
+                      color: colForeground
+                      selectionColor: Util.alpha(colAccent, 0.35)
+                      selectedTextColor: colForeground
+                      activeFocusOnPress: true
+                    }
 
                     Rectangle {
-                      required property string modelData
-                      property bool codeCopied: false
-
-                      width: Style.space(30)
-                      height: Style.space(38)
-                      radius: Style.cornerRadius
-                      color: codeCopied ? Util.alpha(colAccent, 0.2) : Util.alpha(colForeground, 0.08)
-                      border.color: codeCopied ? colAccent : Util.alpha(colAccent, 0.35)
+                      id: pinCopyBtn
+                      width: Style.space(32)
+                      height: Style.space(32)
+                      radius: Style.cornerRadius - 1
+                      color: pinCopyHover.containsMouse ? Util.alpha(colAccent, 0.25) : Util.alpha(colForeground, 0.08)
+                      border.color: pinCopyHover.containsMouse ? colAccent : colBorder
                       border.width: 1
+
+                      property bool copied: false
+                      Timer {
+                        id: pinCopyTimer
+                        interval: 1500
+                        onTriggered: pinCopyBtn.copied = false
+                      }
 
                       Text {
                         anchors.centerIn: parent
-                        text: parent.modelData
+                        text: pinCopyBtn.copied ? "✓" : "󰆏"
                         font.family: root.fontFamily
-                        font.pixelSize: Style.font.subtitle
-                        font.bold: true
-                        font.letterSpacing: 1
-                        color: colForeground
-                      }
-
-                      Timer {
-                        id: boxCopyFlash
-                        interval: 1200
-                        onTriggered: parent.codeCopied = false
+                        font.pixelSize: Style.font.bodySmall
+                        font.bold: pinCopyBtn.copied
+                        color: pinCopyBtn.copied ? "#4ade80" : colAccent
                       }
 
                       MouseArea {
-                        id: codeBoxClick
+                        id: pinCopyHover
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                           Quickshell.execDetached(["wl-copy", root.simklUserCode])
-                          parent.codeCopied = true
-                          boxCopyFlash.restart()
+                          pinCopyBtn.copied = true
+                          pinCopyTimer.restart()
                         }
                       }
                     }
                   }
                 }
 
-                // Copied feedback + manual re-copy hint
+                // Copied feedback + manual hint
                 Text {
                   Layout.fillWidth: true
                   horizontalAlignment: Text.AlignHCenter
                   visible: root.simklUserCode.length > 0
-                  text: "Code copied to clipboard · click it to copy again"
+                  text: "Copied to clipboard · Paste at simkl.com/pin"
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
-                  color: Qt.lighter(colDim, 1.25)
+                  color: colAccent
                 }
 
                 // The one link: open the verification page

@@ -849,13 +849,31 @@ function parseSimklCalendar(rawJson) {
     var info = {
       episode: row.episode.episode,
       airingAt: Math.floor(epochMs / 1000),
-      siteUrl: row.url || ""
+      siteUrl: (row.episode && row.episode.url) || row.url || ""
     }
     var ids = row.ids || {}
-    if (ids.simkl_id) map["s" + ids.simkl_id] = info
-    if (ids.mal) map["m" + ids.mal] = info
-    if (ids.tmdb) map["t" + ids.tmdb] = info
+    var keys = []
+    if (ids.simkl_id) keys.push("s" + ids.simkl_id)
+    if (ids.mal) keys.push("m" + ids.mal)
+    if (ids.tmdb) keys.push("t" + ids.tmdb)
+
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k]
+      if (!map[key]) {
+        map[key] = []
+      }
+      map[key].push(info)
+    }
   }
+
+  for (var k in map) {
+    if (Object.prototype.hasOwnProperty.call(map, k)) {
+      map[k].sort(function(a, b) {
+        return (a.airingAt || 0) - (b.airingAt || 0)
+      })
+    }
+  }
+
   return map
 }
 
@@ -957,13 +975,30 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
     }
 
     // Schedule resolution: exact calendar match first (by Simkl id, then
-    // MAL id), else the entry's own next-episode date.
-    var calInfo = cal["s" + simklId]
-    if (!calInfo && item.malId !== null) calInfo = cal["m" + item.malId]
-    if (!calInfo && type === "shows" && item.tmdbId !== null) {
-      // TV calendar rows carry tmdb ids rather than MAL ids.
-      calInfo = cal["t" + item.tmdbId]
+    // MAL id, then TMDB id for TV shows), else the entry's own next-episode date.
+    var calEpisodes = cal["s" + simklId]
+    if (!calEpisodes && item.malId !== null) calEpisodes = cal["m" + item.malId]
+    if (!calEpisodes && type === "shows" && item.tmdbId !== null) {
+      calEpisodes = cal["t" + item.tmdbId]
     }
+
+    var calInfo = null
+    if (Array.isArray(calEpisodes) && calEpisodes.length > 0) {
+      // Find the earliest upcoming episode in the future (airingAt > nowSec)
+      for (var epIdx = 0; epIdx < calEpisodes.length; epIdx++) {
+        if (calEpisodes[epIdx].airingAt > nowSec) {
+          calInfo = calEpisodes[epIdx]
+          break
+        }
+      }
+      // If none in the future, fallback to latest in calendar
+      if (!calInfo) {
+        calInfo = calEpisodes[calEpisodes.length - 1]
+      }
+    } else if (calEpisodes && typeof calEpisodes === "object") {
+      calInfo = calEpisodes
+    }
+
     if (calInfo) {
       item.nextEpisode = calInfo.episode
       item.airingAt = calInfo.airingAt

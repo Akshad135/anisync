@@ -407,6 +407,7 @@ BarWidget {
         root.simklPinExpiresAt = Math.floor(Date.now() / 1000) + res.expiresInSeconds
         pinPollTimer.interval = res.pollIntervalSecs * 1000
         pinPollTimer.restart()
+        Quickshell.execDetached(["wl-copy", res.userCode])
         Quickshell.execDetached(["xdg-open", res.verificationUrl])
       }
     }
@@ -548,7 +549,17 @@ BarWidget {
     var map = Logic.parseSimklCalendar(rawText)
     for (var k in map) {
       if (Object.prototype.hasOwnProperty.call(map, k)) {
-        root.simklCalendarMap[k] = map[k]
+        if (Array.isArray(map[k])) {
+          if (!root.simklCalendarMap[k]) {
+            root.simklCalendarMap[k] = []
+          }
+          root.simklCalendarMap[k] = root.simklCalendarMap[k].concat(map[k])
+          root.simklCalendarMap[k].sort(function(a, b) {
+            return (a.airingAt || 0) - (b.airingAt || 0)
+          })
+        } else {
+          root.simklCalendarMap[k] = map[k]
+        }
       }
     }
   }
