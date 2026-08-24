@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "akshad135.anisync",
   "name": "AniSync",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Akshad Agrawal",
   "license": "MIT",
-  "description": "Anime & Manga release tracker with AniList and MyAnimeList sync, countdown timers, and desktop notifications",
+  "description": "Anime & Manga release tracker with AniList, MyAnimeList, and Simkl sync, countdown timers, and desktop notifications",
   "icon": "assets/anisync.svg",
   "kinds": [
     "bar-widget"
@@ -16,7 +16,7 @@
   "barWidget": {
     "displayName": "AniSync",
     "icon": "assets/anisync.svg",
-    "description": "Track anime and manga release schedules with AniList and MyAnimeList sync",
+    "description": "Track anime and manga release schedules with AniList, MyAnimeList, and Simkl sync",
     "category": "Media",
     "allowMultiple": false,
     "defaultSection": "right",

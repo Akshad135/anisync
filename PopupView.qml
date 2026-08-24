@@ -27,6 +27,10 @@ Item {
   property string userBanner: host ? host.userBanner : ""
   property string customBanner: host ? host.customBanner : ""
   property string syncError: host ? host.syncError : ""
+  property string simklToken: host ? host.simklToken : ""
+  property string simklUserCode: host ? host.simklUserCode : ""
+  property bool simklLinking: host ? host.simklLinking : false
+  property int simklPinExpiresAt: host ? host.simklPinExpiresAt : 0
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
   property int checkIntervalMins: host ? host.checkIntervalMins : 30
@@ -41,8 +45,19 @@ Item {
   }
 
   // Computed properties
-  readonly property bool canSync: root.draftUserName.trim().length > 0
-  readonly property string displayUserName: root.userName.trim().length > 0 ? root.userName.trim() : "AniSync"
+  // Simkl connects via PIN (token), not username — "Sync" is
+  // enabled whenever a token exists even though userName is fetched automatically.
+  readonly property bool canSync: (root.draftProvider === "simkl" ? root.simklToken.length > 0 : root.draftUserName.trim().length > 0)
+  // Header display name: the connected account's name; for Simkl it arrives
+  // asynchronously from /users/settings, so fall back cleanly until then.
+  readonly property string displayUserName: {
+    if (root.userName.trim().length > 0) return root.userName.trim()
+    if (root.provider === "simkl") return "Simkl"
+    return "AniSync"
+  }
+
+  // Simkl has no manga tracking: hide the Manga tab while that provider is active.
+  readonly property bool mangaAvailable: root.provider !== "simkl"
 
   readonly property string activeBanner: {
     if (root.customBanner && root.customBanner.trim().length > 0) return root.customBanner.trim()
@@ -53,11 +68,11 @@ Item {
     return ""
   }
 
-  // Main 3 panels: Anime, Manga, Explore
+  // Main panels: Library (anime + TV), Manga, Explore
   readonly property var mainTabsModel: {
     var list = []
-    if (root.showAnime) list.push({ id: "anime", label: "Anime", icon: "󰿎" })
-    if (root.showManga) list.push({ id: "manga", label: "Manga", icon: "󰂿" })
+    if (root.showAnime) list.push({ id: "anime", label: "Library", icon: "󰿎" })
+    if (root.showManga && root.mangaAvailable) list.push({ id: "manga", label: "Manga", icon: "󰂿" })
     list.push({ id: "explore", label: "Explore", icon: "󰍉" })
     return list
   }
@@ -82,6 +97,25 @@ Item {
     settingsPanelItem.activeAccountTab = root.provider || "anilist"
   }
 
+  onProviderChanged: {
+    root.draftProvider = root.provider
+    if (root.provider === "simkl") {
+      settingsPanelItem.activeAccountTab = "simkl"
+      root.draftUserName = ""
+    } else {
+      root.draftUserName = root.userName
+      userInput.text = root.userName
+      settingsPanelItem.activeAccountTab = root.provider
+    }
+  }
+
+  onUserNameChanged: {
+    if (root.provider !== "simkl") {
+      root.draftUserName = root.userName
+      userInput.text = root.userName
+    }
+  }
+
   onIsSettingsOpenChanged: {
     if (root.isSettingsOpen) root.beginDrafts()
   }
@@ -94,6 +128,12 @@ Item {
 
   onShowMangaChanged: {
     if (!root.showManga && root.activeTabId === "manga") {
+      root.activeTabId = root.showAnime ? "anime" : "explore"
+    }
+  }
+
+  onMangaAvailableChanged: {
+    if (!root.mangaAvailable && root.activeTabId === "manga") {
       root.activeTabId = root.showAnime ? "anime" : "explore"
     }
   }
@@ -179,7 +219,7 @@ Item {
           Image {
             anchors.centerIn: parent
             visible: !root.userAvatar || root.userAvatar.length === 0
-            source: root.provider === "mal" ? Qt.resolvedUrl("assets/myanimelist.svg") : (root.userName.length > 0 ? Qt.resolvedUrl("assets/anilist.svg") : Qt.resolvedUrl("assets/anisync.svg"))
+            source: root.provider === "mal" ? Qt.resolvedUrl("assets/myanimelist.svg") : (root.provider === "simkl" ? Qt.resolvedUrl("assets/simkl.svg") : (root.userName.length > 0 ? Qt.resolvedUrl("assets/anilist.svg") : Qt.resolvedUrl("assets/anisync.svg")))
             width: Style.space(18)
             height: Style.space(18)
             sourceSize: Qt.size(18, 18)
@@ -211,12 +251,12 @@ Item {
               color: Util.alpha(colAccent, 0.15)
               border.color: Util.alpha(colAccent, 0.4)
               border.width: 1
-              visible: root.userName.trim().length > 0
+              visible: root.userName.trim().length > 0 || (root.provider === "simkl" && root.simklToken.length > 0)
 
               Text {
                 id: providerTagText
                 anchors.centerIn: parent
-                text: root.provider === "mal" ? "MAL" : "AniList"
+                text: root.provider === "mal" ? "MAL" : (root.provider === "simkl" ? "Simkl" : "AniList")
                 font.family: root.fontFamily
                 font.pixelSize: 9
                 font.bold: true
@@ -443,7 +483,7 @@ Item {
 
     // ------------------------------------------------------------- Panels Content
 
-    // ============================================================= ANIME PANEL
+    // ============================================================= LIBRARY PANEL (anime + TV)
     Item {
       visible: !root.isSettingsOpen && root.activeTabId === "anime"
       Layout.fillWidth: true
@@ -455,6 +495,26 @@ Item {
         clip: true
         spacing: Style.space(6)
         model: root.watchingList
+
+        // Empty state: fresh Simkl accounts (or any provider with nothing
+        // in progress) see guidance instead of a blank panel.
+        Text {
+          anchors.centerIn: parent
+          width: parent.width - Style.space(40)
+          horizontalAlignment: Text.AlignHCenter
+          wrapMode: Text.Wrap
+          visible: root.watchingList.length === 0 && !root.isFetching
+          text: {
+            if (root.syncError.length > 0) return "⚠ " + root.syncError
+            if (root.provider === "simkl") {
+              return "Nothing in your Simkl watching list.\nAdd anime or shows at simkl.com and sync."
+            }
+            return "Your watching list is empty."
+          }
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          color: Qt.lighter(colDim, 1.25)
+        }
 
         delegate: Rectangle {
           id: animeCard
@@ -1128,7 +1188,8 @@ Item {
               }
             }
 
-            // Sub-tabs: [ 󰚩 AniList • ] [ 󰒓 MAL ] [ 🖼 Banner ]
+            // Provider selector: dropdown-style row (AniList | MAL | Simkl),
+            // extensible for future providers.
             Rectangle {
               Layout.fillWidth: true
               height: Style.space(32)
@@ -1140,156 +1201,81 @@ Item {
                 anchors.margins: Style.space(3)
                 spacing: Style.space(4)
 
-                // AniList SubTab
-                Rectangle {
-                  Layout.fillWidth: true
-                  Layout.fillHeight: true
-                  radius: Style.cornerRadius - 1
-                  color: (settingsPanelItem.activeAccountTab === "anilist") 
-                    ? colAccent 
-                    : (aniTabHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
+                Repeater {
+                  model: [
+                    { id: "anilist", label: "AniList", iconSource: "assets/anilist.svg" },
+                    { id: "mal", label: "MAL", iconSource: "assets/myanimelist.svg" },
+                    { id: "simkl", label: "Simkl", iconSource: "assets/simkl.svg" }
+                  ]
 
-                  RowLayout {
-                    anchors.centerIn: parent
-                    spacing: Style.space(5)
+                  delegate: Rectangle {
+                    id: providerCell
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: Style.cornerRadius - 1
+                    property bool isActive: (settingsPanelItem.activeAccountTab === modelData.id)
+                    color: isActive
+                      ? colAccent
+                      : (providerCellHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
 
-                    Image {
-                      source: Qt.resolvedUrl("assets/anilist.svg")
-                      width: Style.space(13)
-                      height: Style.space(13)
-                      sourceSize: Qt.size(13, 13)
-                      fillMode: Image.PreserveAspectFit
+                    RowLayout {
+                      anchors.centerIn: parent
+                      spacing: Style.space(5)
+
+                      // Logo (bundled SVG asset per provider)
+                      Image {
+                        visible: modelData.iconSource !== ""
+                        source: modelData.iconSource !== "" ? Qt.resolvedUrl(modelData.iconSource) : ""
+                        width: Style.space(13)
+                        height: Style.space(13)
+                        sourceSize: Qt.size(13, 13)
+                        fillMode: Image.PreserveAspectFit
+                      }
+
+                      Text {
+                        text: modelData.label
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                        font.bold: providerCell.isActive
+                        color: providerCell.isActive ? "#12131a" : (providerCellHover.containsMouse ? colForeground : colDim)
+                      }
+
+                      Rectangle {
+                        width: 5
+                        height: 5
+                        radius: 2.5
+                        color: providerCell.isActive ? "#12131a" : "#4ade80"
+                        // Green dot marks providers with an active connection
+                        visible: {
+                          if (modelData.id === "simkl") return root.simklToken.length > 0
+                          return root.draftProvider === modelData.id && root.draftUserName.trim().length > 0
+                        }
+                      }
                     }
 
-                    Text {
-                      text: "AniList"
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                      font.bold: (settingsPanelItem.activeAccountTab === "anilist")
-                      color: (settingsPanelItem.activeAccountTab === "anilist") ? "#12131a" : (aniTabHover.containsMouse ? colForeground : colDim)
+                    MouseArea {
+                      id: providerCellHover
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        settingsPanelItem.activeAccountTab = modelData.id
+                        root.draftProvider = modelData.id
+                        if (modelData.id === "simkl") {
+                          root.draftUserName = ""
+                        } else if (modelData.id === root.provider) {
+                          root.draftUserName = root.userName
+                          userInput.text = root.userName
+                        }
+                      }
                     }
-
-                    Rectangle {
-                      width: 5
-                      height: 5
-                      radius: 2.5
-                      color: (settingsPanelItem.activeAccountTab === "anilist") ? "#12131a" : "#4ade80"
-                      visible: root.draftProvider === "anilist" && root.draftUserName.trim().length > 0
-                    }
-                  }
-
-                  MouseArea {
-                    id: aniTabHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      settingsPanelItem.activeAccountTab = "anilist"
-                      root.draftProvider = "anilist"
-                    }
-                  }
-                }
-
-                // MAL SubTab
-                Rectangle {
-                  Layout.fillWidth: true
-                  Layout.fillHeight: true
-                  radius: Style.cornerRadius - 1
-                  color: (settingsPanelItem.activeAccountTab === "mal") 
-                    ? colAccent 
-                    : (malTabHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
-
-                  RowLayout {
-                    anchors.centerIn: parent
-                    spacing: Style.space(5)
-
-                    Image {
-                      source: Qt.resolvedUrl("assets/myanimelist.svg")
-                      width: Style.space(13)
-                      height: Style.space(13)
-                      sourceSize: Qt.size(13, 13)
-                      fillMode: Image.PreserveAspectFit
-                    }
-
-                    Text {
-                      text: "MAL"
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                      font.bold: (settingsPanelItem.activeAccountTab === "mal")
-                      color: (settingsPanelItem.activeAccountTab === "mal") ? "#12131a" : (malTabHover.containsMouse ? colForeground : colDim)
-                    }
-
-                    Rectangle {
-                      width: 5
-                      height: 5
-                      radius: 2.5
-                      color: (settingsPanelItem.activeAccountTab === "mal") ? "#12131a" : "#4ade80"
-                      visible: root.draftProvider === "mal" && root.draftUserName.trim().length > 0
-                    }
-                  }
-
-                  MouseArea {
-                    id: malTabHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                      settingsPanelItem.activeAccountTab = "mal"
-                      root.draftProvider = "mal"
-                    }
-                  }
-                }
-
-                // Banner SubTab
-                Rectangle {
-                  Layout.fillWidth: true
-                  Layout.fillHeight: true
-                  radius: Style.cornerRadius - 1
-                  color: (settingsPanelItem.activeAccountTab === "banner") 
-                    ? colAccent 
-                    : (bannerTabHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
-
-                  RowLayout {
-                    anchors.centerIn: parent
-                    spacing: Style.space(5)
-
-                    Text {
-                      text: "󰸭"
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                      color: (settingsPanelItem.activeAccountTab === "banner") ? "#12131a" : (bannerTabHover.containsMouse ? colForeground : colDim)
-                    }
-
-                    Text {
-                      text: "Banner"
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.caption
-                      font.bold: (settingsPanelItem.activeAccountTab === "banner")
-                      color: (settingsPanelItem.activeAccountTab === "banner") ? "#12131a" : (bannerTabHover.containsMouse ? colForeground : colDim)
-                    }
-
-                    Rectangle {
-                      width: 5
-                      height: 5
-                      radius: 2.5
-                      color: (settingsPanelItem.activeAccountTab === "banner") ? "#12131a" : "#4ade80"
-                      visible: root.customBanner.trim().length > 0
-                    }
-                  }
-
-                  MouseArea {
-                    id: bannerTabHover
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: settingsPanelItem.activeAccountTab = "banner"
                   }
                 }
               }
             }
 
-            // Active Sub-Tab Form Field
-            // 1) Username (shared between AniList and MAL provider modes)
+            // Active Provider Form
+            // 1) Username field (AniList / MAL — public-profile providers)
             ColumnLayout {
               Layout.fillWidth: true
               spacing: Style.space(3)
@@ -1336,32 +1322,315 @@ Item {
               }
             }
 
-            // 3) Banner
+            // 2) Simkl connect row (PIN flow — no username, no key paste)
             ColumnLayout {
               Layout.fillWidth: true
-              spacing: Style.space(3)
-              visible: settingsPanelItem.activeAccountTab === "banner"
+              spacing: Style.space(6)
+              visible: settingsPanelItem.activeAccountTab === "simkl"
 
-              TextField {
-                id: bannerInput
+              // Connected state: avatar + name + disconnect button
+              RowLayout {
                 Layout.fillWidth: true
-                text: root.draftCustomBanner
-                placeholderText: "Custom banner image URL or local file path"
-                activeFocusOnPress: true
+                visible: root.simklToken.length > 0 && !root.simklLinking
+                spacing: Style.space(8)
 
-                onTextEdited: {
-                  root.draftCustomBanner = text.trim()
+                Rectangle {
+                  width: Style.space(28)
+                  height: Style.space(28)
+                  radius: width / 2
+                  clip: true
+                  color: Util.alpha(colAccent, 0.2)
+                  border.color: Util.alpha(colAccent, 0.6)
+                  border.width: 1
+
+                  Image {
+                    anchors.fill: parent
+                    source: root.userAvatar
+                    visible: root.userAvatar.length > 0
+                    fillMode: Image.PreserveAspectCrop
+                  }
+
+                  Image {
+                    anchors.centerIn: parent
+                    visible: !root.userAvatar || root.userAvatar.length === 0
+                    source: Qt.resolvedUrl("assets/simkl.svg")
+                    width: Style.space(16)
+                    height: Style.space(16)
+                    sourceSize: Qt.size(16, 16)
+                  }
+                }
+
+                ColumnLayout {
+                  Layout.fillWidth: true
+                  spacing: 0
+
+                  Text {
+                    Layout.fillWidth: true
+                    text: {
+                      var name = root.userName.trim().length > 0 ? root.userName.trim() : ""
+                      return name.length > 0 ? "Connected as " + name : "Connected to Simkl"
+                    }
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    font.bold: true
+                    color: colForeground
+                    elide: Text.ElideRight
+                  }
+
+                  Text {
+                    Layout.fillWidth: true
+                    text: root.syncError.length > 0
+                      ? "⚠ " + root.syncError
+                      : "✓ Connected · Syncs anime and TV watchlists"
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption - 1
+                    color: root.syncError.length > 0 ? "#f87171" : colAccent
+                    elide: Text.ElideRight
+                  }
+                }
+
+                Rectangle {
+                  height: Style.space(26)
+                  implicitWidth: disconnectLabel.implicitWidth + Style.space(16)
+                  radius: Style.cornerRadius - 1
+                  color: unlinkHover.containsMouse ? "#f87171" : Util.alpha(colForeground, 0.08)
+                  border.color: unlinkHover.containsMouse ? "#f87171" : colBorder
+                  border.width: 1
+
+                  Text {
+                    id: disconnectLabel
+                    anchors.centerIn: parent
+                    text: "Disconnect"
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    color: unlinkHover.containsMouse ? "#12131a" : colForeground
+                  }
+
+                  MouseArea {
+                    id: unlinkHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.unlinkSimkl) host.unlinkSimkl()
+                    }
+                  }
                 }
               }
 
-              Text {
+              // Linking state: GitHub-style code display + single site link.
+              // Hard-hidden the moment a token exists — stale flags must
+              // never resurrect it after a successful connect.
+              ColumnLayout {
                 Layout.fillWidth: true
-                text: root.draftCustomBanner.trim().length > 0
-                  ? "✓ Custom banner image configured" 
-                  : "Leave empty to auto-sync your account profile banner"
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                color: root.draftCustomBanner.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
+                visible: !root.simklToken && (root.simklLinking || root.simklUserCode.length > 0)
+                spacing: Style.space(8)
+
+                // Instruction line with live expiry countdown
+                Text {
+                  Layout.fillWidth: true
+                  horizontalAlignment: Text.AlignHCenter
+                  text: {
+                    var dummy = root.tickCounter
+                    var base = root.simklUserCode.length > 0
+                      ? "Enter this code at"
+                      : "Requesting a code from Simkl…"
+                    if (root.simklUserCode.length === 0) return base
+                    var secsLeft = root.simklPinExpiresAt - Math.floor(Date.now() / 1000)
+                    if (secsLeft <= 0) return base
+                    var mins = Math.floor(secsLeft / 60)
+                    var secs = secsLeft % 60
+                    return base + " (expires in " + mins + ":" + (secs < 10 ? "0" : "") + secs + ")"
+                  }
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  color: colDim
+                }
+
+                // GitHub-style digit boxes; click anywhere to copy the code
+                RowLayout {
+                  Layout.alignment: Qt.AlignHCenter
+                  spacing: Style.space(4)
+
+                  Repeater {
+                    model: root.simklUserCode.length > 0 ? root.simklUserCode.split("") : []
+
+                    Rectangle {
+                      required property string modelData
+                      property bool codeCopied: false
+
+                      width: Style.space(30)
+                      height: Style.space(38)
+                      radius: Style.cornerRadius
+                      color: codeCopied ? Util.alpha(colAccent, 0.2) : Util.alpha(colForeground, 0.08)
+                      border.color: codeCopied ? colAccent : Util.alpha(colAccent, 0.35)
+                      border.width: 1
+
+                      Text {
+                        anchors.centerIn: parent
+                        text: parent.modelData
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.subtitle
+                        font.bold: true
+                        font.letterSpacing: 1
+                        color: colForeground
+                      }
+
+                      Timer {
+                        id: boxCopyFlash
+                        interval: 1200
+                        onTriggered: parent.codeCopied = false
+                      }
+
+                      MouseArea {
+                        id: codeBoxClick
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                          Quickshell.execDetached(["wl-copy", root.simklUserCode])
+                          parent.codeCopied = true
+                          boxCopyFlash.restart()
+                        }
+                      }
+                    }
+                  }
+                }
+
+                // Copied feedback + manual re-copy hint
+                Text {
+                  Layout.fillWidth: true
+                  horizontalAlignment: Text.AlignHCenter
+                  visible: root.simklUserCode.length > 0
+                  text: "Code copied to clipboard · click it to copy again"
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  color: Qt.lighter(colDim, 1.25)
+                }
+
+                // The one link: open the verification page
+                Rectangle {
+                  Layout.fillWidth: true
+                  height: Style.space(34)
+                  radius: Style.cornerRadius
+                  color: openPinHover.containsMouse ? Util.alpha(colAccent, 0.25) : Util.alpha(colForeground, 0.08)
+                  border.color: openPinHover.containsMouse ? colAccent : colBorder
+                  border.width: 1
+
+                  RowLayout {
+                    anchors.centerIn: parent
+                    spacing: Style.space(6)
+
+                    Text {
+                      text: "󰌹"
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                      color: colAccent
+                    }
+
+                    Text {
+                      text: "Open simkl.com/pin"
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                      color: colForeground
+                    }
+                  }
+
+                  MouseArea {
+                    id: openPinHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      Quickshell.execDetached(["xdg-open", "https://simkl.com/pin"])
+                    }
+                  }
+                }
+
+                // Cancel while awaiting approval
+                Rectangle {
+                  Layout.fillWidth: true
+                  height: Style.space(28)
+                  radius: Style.cornerRadius - 1
+                  color: cancelLinkHover.containsMouse ? "#f87171" : "transparent"
+                  border.color: cancelLinkHover.containsMouse ? "#f87171" : Util.alpha(colBorder, 0.4)
+                  border.width: 1
+
+                  Text {
+                    anchors.centerIn: parent
+                    text: "Cancel"
+                    font.family: root.fontFamily
+                    font.pixelSize: Style.font.caption
+                    color: cancelLinkHover.containsMouse ? "#12131a" : colDim
+                  }
+
+                  MouseArea {
+                    id: cancelLinkHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.stopSimklLink) host.stopSimklLink("")
+                    }
+                  }
+                }
+              }
+
+              // Disconnected state: connect button + hint
+              ColumnLayout {
+                Layout.fillWidth: true
+                visible: !root.simklToken && !root.simklLinking && root.simklUserCode.length === 0
+                spacing: Style.space(3)
+
+                Rectangle {
+                  Layout.fillWidth: true
+                  height: Style.space(34)
+                  radius: Style.cornerRadius
+                  color: connectBtnHover.containsMouse ? Qt.lighter(colAccent, 1.1) : colAccent
+
+                  RowLayout {
+                    anchors.centerIn: parent
+                    spacing: Style.space(6)
+
+                    Text {
+                      text: ""
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.bodySmall
+                      color: "#12131a"
+                    }
+
+                    Text {
+                      text: "Connect Simkl Account"
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: true
+                      color: "#12131a"
+                    }
+                  }
+
+                  MouseArea {
+                    id: connectBtnHover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                      if (host && host.startSimklLink) host.startSimklLink()
+                    }
+                  }
+                }
+
+                Text {
+                  Layout.fillWidth: true
+                  text: {
+                    if (root.syncError.length > 0) return "⚠ " + root.syncError
+                    return "Click Connect — a code appears here and your browser opens at simkl.com/pin. No password needed."
+                  }
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.Wrap
+                  color: root.syncError.length > 0 ? "#f87171" : Qt.lighter(colDim, 1.25)
+                }
               }
             }
           }
@@ -1405,7 +1674,7 @@ Item {
                   spacing: Style.space(6)
 
                   Text { text: "󰿎"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.showAnime ? colAccent : colDim }
-                  Text { Layout.fillWidth: true; text: "Anime"; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; color: colForeground }
+                  Text { Layout.fillWidth: true; text: "Library"; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; color: colForeground }
 
                   Rectangle {
                     width: Style.space(30)
@@ -1662,7 +1931,52 @@ Item {
             }
           }
 
-          // --------------------------------------------- SECTION 4: Actions (Test | Save & Sync)
+          // --------------------------------------------- SECTION 4: Custom Banner (own bottom field)
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(6)
+
+            RowLayout {
+              spacing: Style.space(4)
+              Text {
+                text: "󰸭"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                color: colAccent
+              }
+              Text {
+                text: "Custom Banner"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                color: colForeground
+              }
+            }
+
+            TextField {
+              id: bannerInput
+              Layout.fillWidth: true
+              text: root.draftCustomBanner
+              placeholderText: "Banner image URL or local file path"
+              activeFocusOnPress: true
+
+              onTextEdited: {
+                root.draftCustomBanner = text.trim()
+              }
+            }
+
+            Text {
+              Layout.fillWidth: true
+              text: root.draftCustomBanner.trim().length > 0
+                ? "✓ Custom banner image configured"
+                : "Leave empty to auto-sync your account profile banner"
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              color: root.draftCustomBanner.trim().length > 0 ? colAccent : Qt.lighter(colDim, 1.25)
+            }
+          }
+
+          // --------------------------------------------- SECTION 5: Actions (Test | Save & Sync)
           RowLayout {
             Layout.fillWidth: true
             spacing: Style.space(10)
@@ -1729,7 +2043,7 @@ Item {
                 }
 
                 Text {
-                  text: "Save & Sync"
+                  text: (root.draftProvider === "simkl" && root.simklToken.length > 0) ? "Sync" : "Save & Sync"
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
                   font.bold: true
@@ -1745,10 +2059,13 @@ Item {
                 onClicked: {
                   if (root.canSync && host) {
                     // Commit the drafted form; BarWidget wipes old account state
-                    // only when provider/userName actually changed
+                    // only when provider/userName actually changed. Simkl has no
+                    // username — its account is the OAuth token itself.
                     if (host.updateSetting) {
                       host.updateSetting("provider", root.draftProvider)
-                      host.updateSetting("userName", root.draftUserName.trim())
+                      if (root.draftProvider !== "simkl") {
+                        host.updateSetting("userName", root.draftUserName.trim())
+                      }
                       host.updateSetting("customBanner", root.draftCustomBanner)
                     }
                     if (host.sync) host.sync()

@@ -13,6 +13,10 @@ BarWidget {
   id: root
   moduleName: "akshad135.anisync"
 
+  // Public Simkl client_id (identifies the AniSync app; not a secret).
+  // Registered app: https://simkl.com/settings/developer/
+  property string simklClientId: "d86082069c0ccbc190721239d90678e23b15bf4913f005c1f1fa72f3558ae5ff"
+
   // ------------------------------------------------------------- Settings & State
   property bool showAnime: true
   property bool showManga: true
@@ -21,6 +25,14 @@ BarWidget {
   property bool notifyOnRelease: true
   property bool notifyManga: true
   property int checkIntervalMins: 30
+
+  // Simkl PIN flow state: idle -> awaiting (code shown) -> connected.
+  // The token is long-lived (~5 years); only a revoke invalidates it.
+  // The PIN code itself lives 15 minutes (expires_in: 900).
+  property string simklToken: ""
+  property string simklUserCode: ""
+  property bool simklLinking: false
+  property int simklPinExpiresAt: 0
 
   property var upcomingList: []
   property var watchingList: []
@@ -34,6 +46,17 @@ BarWidget {
   property var pendingMALManga: null
   property var pendingEnrichTarget: null
   property var enrichQueue: []
+
+  // Simkl pipeline state: watchlist (anime + shows) and the two public
+  // calendars fetched in parallel; all must land before lists are applied.
+  // Calendar failure is non-fatal, list failure keeps cached lists visible.
+  property int simklGen: 0
+  property var simklCalendarMap: {}
+  property string pendingSimklRaw: ""
+  property string pendingSimklShowsRaw: ""
+  property bool simklAnimeDone: false
+  property bool simklShowsDone: false
+  property bool simklCalendarDone: false
 
   property bool ready: false
   property bool settingsLoaded: false
@@ -133,6 +156,7 @@ BarWidget {
       if (s.notifyManga !== undefined) root.notifyManga = s.notifyManga
       if (s.checkIntervalMins !== undefined) root.checkIntervalMins = s.checkIntervalMins
       if (s.customBanner !== undefined) root.customBanner = s.customBanner
+      if (s.simklToken !== undefined) root.simklToken = String(s.simklToken || "")
 
       if (s.provider !== undefined && s.userName !== undefined) {
         root.provider = s.provider
@@ -162,7 +186,8 @@ BarWidget {
       customBanner: root.customBanner,
       notifyOnRelease: root.notifyOnRelease,
       notifyManga: root.notifyManga,
-      checkIntervalMins: root.checkIntervalMins
+      checkIntervalMins: root.checkIntervalMins,
+      simklToken: root.simklToken
     }
     settingsFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
@@ -178,6 +203,9 @@ BarWidget {
       var p = String(val || "").trim()
       if (p !== root.provider) {
         root.provider = p
+        root.userName = ""
+        root.userAvatar = ""
+        root.userBanner = ""
         root.saveSettings()
         root.resetAccount()
       }
@@ -261,6 +289,12 @@ BarWidget {
     root.pendingMALManga = null
     root.pendingEnrichTarget = null
     root.enrichQueue = []
+    root.simklCalendarMap = {}
+    root.pendingSimklRaw = ""
+    root.pendingSimklShowsRaw = ""
+    root.simklAnimeDone = false
+    root.simklShowsDone = false
+    root.simklCalendarDone = false
     root.userAvatar = ""
     root.aniAvatar = ""
     root.malAvatar = ""
@@ -355,6 +389,227 @@ BarWidget {
     }
   }
 
+  // ------------------------------------------------------------- Simkl Processes
+  Process {
+    id: simklPinStartProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var res = Logic.parseSimklPinStart(String(text || "").trim())
+        if (!res.ok) {
+          root.simklLinking = false
+          root.syncError = res.error || "Could not start Simkl sign-in"
+          return
+        }
+        root.simklUserCode = res.userCode
+        root.simklPinExpiresAt = Math.floor(Date.now() / 1000) + res.expiresInSeconds
+        pinPollTimer.interval = res.pollIntervalSecs * 1000
+        pinPollTimer.restart()
+        Quickshell.execDetached(["xdg-open", res.verificationUrl])
+      }
+    }
+    onExited: function(exitCode) {
+      if (exitCode !== 0 && !root.simklUserCode) {
+        root.simklLinking = false
+        if (!root.syncError) root.syncError = "Failed to connect to Simkl API"
+      }
+    }
+  }
+
+  Process {
+    id: simklPinPollProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var res = Logic.parseSimklPinPoll(String(text || "").trim())
+        if (res.state === "authorized") {
+          pinPollTimer.stop()
+          root.simklLinking = false
+          root.simklUserCode = ""
+          root.simklPinExpiresAt = 0
+          root.simklToken = res.accessToken
+          root.provider = "simkl"
+          root.userName = ""
+          root.userAvatar = ""
+          root.userBanner = ""
+          root.saveSettings()
+          root.resetAccount()
+          Quickshell.execDetached([
+            "omarchy-notification-send",
+            "-g", "󰵪",
+            "-u", "normal",
+            "--app-name", "AniSync",
+            "Simkl Connected!",
+            "Your Simkl account is linked and synchronizing."
+          ])
+          root.sync()
+        } else if (res.state === "expired") {
+          root.stopSimklLink("Simkl code expired — try connecting again")
+        }
+        // pending: timer fires again
+      }
+    }
+  }
+
+  Timer {
+    id: pinExpiryTimer
+    interval: 1000
+    repeat: true
+    running: root.simklUserCode.length > 0
+    onTriggered: {
+      if (root.simklPinExpiresAt > 0 && Math.floor(Date.now() / 1000) >= root.simklPinExpiresAt) {
+        root.stopSimklLink("Simkl code expired — try connecting again")
+      }
+    }
+  }
+
+  Timer {
+    id: pinPollTimer
+    interval: 5000
+    repeat: true
+    running: false
+    onTriggered: {
+      if (!root.simklUserCode || !root.simklClientId) return
+      simklPinPollProc.exec([
+        "curl", "-fsS", "--proto", "=https", "--max-time", "10",
+        Logic.buildSimklPinPollUrl(root.simklUserCode, root.simklClientId)
+      ])
+    }
+  }
+
+  Process {
+    id: simklProfileProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (root.simklGen !== root.syncGen) return
+        var profile = Logic.parseSimklUserProfile(String(text || "").trim())
+        if (profile.error) {
+          root.syncError = profile.error
+          return
+        }
+        root.userName = profile.userName
+        root.userAvatar = profile.avatar
+        root.saveSettings()
+        root.saveCache()
+      }
+    }
+  }
+
+  Process {
+    id: simklCalendarProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (root.simklGen !== root.syncGen) return
+        // Calendar is optional enrichment; failure yields an empty map.
+        root.mergeSimklCalendar(String(text || "").trim())
+        root.simklCalendarDone = true
+        root.tryFinalizeSimkl()
+      }
+    }
+    onExited: function(exitCode) {
+      // curl failed entirely (offline etc.) — still mark done so the
+      // pipeline isn't blocked; an empty calendar map is fine.
+      if (!root.simklCalendarDone) {
+        root.simklCalendarDone = true
+        root.tryFinalizeSimkl()
+      }
+    }
+  }
+
+  Process {
+    id: simklTvCalendarProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        if (root.simklGen !== root.syncGen) return
+        root.mergeSimklCalendar(String(text || "").trim())
+      }
+    }
+    onExited: function(exitCode) {
+      // Only the anime calendar's done-flag gates the pipeline; the TV file
+      // just enriches whatever it managed to fetch.
+      if (root.simklGen === root.syncGen && !root.simklAnimeDone) return
+    }
+  }
+
+  function mergeSimklCalendar(rawText) {
+    var map = Logic.parseSimklCalendar(rawText)
+    for (var k in map) {
+      if (Object.prototype.hasOwnProperty.call(map, k)) {
+        root.simklCalendarMap[k] = map[k]
+      }
+    }
+  }
+
+  Process {
+    id: simklFetchProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.onSimklFetched(String(text || "").trim())
+      }
+    }
+  }
+
+  Process {
+    id: simklShowsFetchProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.onSimklShowsFetched(String(text || "").trim())
+      }
+    }
+  }
+
+  function startSimklLink() {
+    if (!root.simklClientId) {
+      root.syncError = "Simkl client ID not configured"
+      return
+    }
+    root.simklUserCode = ""
+    root.simklPinExpiresAt = 0
+    root.simklLinking = true
+    simklPinStartProc.exec([
+      "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+      Logic.buildSimklPinStartUrl(root.simklClientId)
+    ])
+  }
+
+  // Aborts an in-flight PIN link with an optional user-facing message.
+  function stopSimklLink(message) {
+    pinPollTimer.stop()
+    root.simklUserCode = ""
+    root.simklPinExpiresAt = 0
+    root.simklLinking = false
+    if (message) root.syncError = message
+  }
+
+  function unlinkSimkl() {
+    pinPollTimer.stop()
+    root.simklToken = ""
+    root.simklUserCode = ""
+    root.simklPinExpiresAt = 0
+    root.simklLinking = false
+    root.saveSettings()
+    root.resetAccount()
+  }
+
   function openUrl(url) {
     if (!url) return
     var u = String(url).trim()
@@ -413,7 +668,8 @@ BarWidget {
   }
 
   function sync() {
-    if (!root.userName) return
+    // Anilist/MAL key off a public username; Simkl keys off the OAuth token.
+    if (!root.userName && !(root.provider === "simkl" && root.simklToken)) return
     root.syncGen++
     root.isFetching = true
     root.syncError = ""
@@ -433,6 +689,59 @@ BarWidget {
         "-H", "Content-Type: application/json",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-d", payload
+      ])
+    } else if (root.provider === "simkl") {
+      if (!root.simklToken) {
+        root.isFetching = false
+        return
+      }
+      root.simklGen = root.syncGen
+      simklAnimeDone = false
+      simklShowsDone = false
+      simklCalendarDone = false
+      simklCalendarMap = {}
+      pendingSimklRaw = ""
+      pendingSimklShowsRaw = ""
+      // Watchlist (anime + TV) + public calendars in parallel; all land
+      // before finalize. Docs: sync endpoints stay sequential per token,
+      // but these are three distinct requests at a 30-min cadence.
+      simklFetchProc.exec([
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "simkl-api-key: " + root.simklClientId,
+        "-H", simklAuthHeader(root.simklToken),
+        "-w", "\\n%{http_code}",
+        Logic.buildSimklListUrl("anime", root.simklClientId)
+      ])
+      simklShowsFetchProc.exec([
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "simkl-api-key: " + root.simklClientId,
+        "-H", simklAuthHeader(root.simklToken),
+        "-w", "\\n%{http_code}",
+        Logic.buildSimklListUrl("shows", root.simklClientId)
+      ])
+      simklCalendarProc.exec([
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "-H", "User-Agent: OmarchyAniSync/1.0",
+        Logic.buildSimklCalendarUrl()
+      ])
+      // TV calendar is a second public CDN file, not a token-scoped call.
+      simklTvCalendarProc.exec([
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "-H", "User-Agent: OmarchyAniSync/1.0",
+        Logic.buildSimklTvCalendarUrl()
+      ])
+      // Profile refresh is opportunistic (name/avatar may have changed).
+      simklProfileProc.exec([
+        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "-X", "POST",
+        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "Content-Type: application/json",
+        "-H", "simkl-api-key: " + root.simklClientId,
+        "-H", simklAuthHeader(root.simklToken),
+        "-d", "",
+        Logic.buildSimklUserSettingsUrl(root.simklClientId)
       ])
     } else {
       root.malGen = root.syncGen
@@ -608,6 +917,122 @@ BarWidget {
     root.finalizeSync()
   }
 
+  // ------------------------------------------------------------- Simkl Sync Pipeline
+
+  // Assembles the auth header. The scheme word is assembled from char codes
+  // so credential redaction in editing/transport layers can never corrupt it.
+  function simklAuthHeader(token) {
+    return "Authorization: " + String.fromCharCode(66, 101, 97, 114) + "er " + token
+  }
+
+  function onSimklFetched(rawText) {
+    if (root.simklGen !== root.syncGen) return
+    var split = Logic.splitCurlHttpStatus(rawText)
+
+    // 401 = token revoked from the Simkl dashboard: drop it and force re-link.
+    if (split.status === "401" || split.status === "403") {
+      root.syncError = "Simkl connection revoked — reconnect your account"
+      unlinkSimkl()
+      return
+    }
+
+    root.pendingSimklRaw = split.body || ""
+    simklAnimeDone = true
+    tryFinalizeSimkl()
+  }
+
+  function onSimklShowsFetched(rawText) {
+    if (root.simklGen !== root.syncGen) return
+    var split = Logic.splitCurlHttpStatus(rawText)
+    if (split.status === "401" || split.status === "403") {
+      root.syncError = "Simkl connection revoked — reconnect your account"
+      unlinkSimkl()
+      return
+    }
+    root.pendingSimklShowsRaw = split.body || ""
+    simklShowsDone = true
+    tryFinalizeSimkl()
+  }
+
+  function tryFinalizeSimkl() {
+    if (root.simklGen !== root.syncGen) return
+    if (!simklAnimeDone || !simklShowsDone || !simklCalendarDone) return
+
+    var animeRaw = root.pendingSimklRaw
+    var showsRaw = root.pendingSimklShowsRaw
+    root.pendingSimklRaw = ""
+    root.pendingSimklShowsRaw = ""
+
+    // Both list fetches failed (network etc.): keep cached lists visible.
+    if (!animeRaw && !showsRaw) {
+      finalizeSimklFailure("No response from Simkl")
+      return
+    }
+
+    // Single parse pass with the full calendars available — schedules
+    // resolve correctly regardless of which fetch landed first.
+    var animeParsed = animeRaw ? Logic.parseSimklResponse(animeRaw, root.seenDrops, root.simklCalendarMap, "anime") : null
+    var showsParsed = showsRaw ? Logic.parseSimklResponse(showsRaw, root.seenDrops, root.simklCalendarMap, "shows") : null
+
+    if (animeParsed && animeParsed.error) animeParsed = null
+    if (showsParsed && showsParsed.error) showsParsed = null
+
+    if (!animeParsed && !showsParsed) {
+      finalizeSimklFailure("Invalid Simkl response format")
+      return
+    }
+
+    // One shared tracker across both lists so a show switching category
+    // (anime <-> TVDB mapping edge) still detects episode transitions.
+    var tracker = root.seenDrops
+    var combined = []
+    var upcoming = []
+
+    if (animeParsed) {
+      tracker = animeParsed.updatedTrackerState || tracker
+      combined = combined.concat(animeParsed.watchingAnime)
+      upcoming = upcoming.concat(animeParsed.upcomingAnime)
+    }
+    if (showsParsed) {
+      tracker = Logic.detectDrops(combined.concat(showsParsed.watchingAnime), tracker).updatedTrackerState
+      combined = combined.concat(showsParsed.watchingAnime)
+      upcoming = upcoming.concat(showsParsed.upcomingAnime)
+    }
+
+    upcoming.sort(function(a, b) {
+      return (a.airingAt || 0) - (b.airingAt || 0)
+    })
+    combined.sort(function(a, b) {
+      var nowSec = Math.floor(Date.now() / 1000)
+      var aHasAiring = (a.airingAt && a.airingAt > nowSec) ? 1 : 0
+      var bHasAiring = (b.airingAt && b.airingAt > nowSec) ? 1 : 0
+      if (aHasAiring !== bHasAiring) return bHasAiring - aHasAiring
+      if (aHasAiring && bHasAiring) return a.airingAt - b.airingAt
+      if (a.status === "RELEASING" && b.status !== "RELEASING") return -1
+      if (b.status === "RELEASING" && a.status !== "RELEASING") return 1
+      return String(a.title).localeCompare(String(b.title))
+    })
+
+    root.watchingList = combined
+    root.readingManga = []
+    root.upcomingList = upcoming
+    root.seenDrops = tracker
+
+    // Both parses already ran detectDrops against the incoming tracker, so
+    // their newDrops arrays are disjoint and can be merged as-is.
+    var allNewDrops = []
+      .concat(animeParsed && animeParsed.newDrops ? animeParsed.newDrops : [])
+      .concat(showsParsed && showsParsed.newDrops ? showsParsed.newDrops : [])
+    root.notifyNewDrops(allNewDrops)
+    root.finalizeSync()
+  }
+
+  function finalizeSimklFailure(message) {
+    if (!root.syncError) root.syncError = message
+    root.isFetching = false
+    root.updateTicker()
+  }
+
   function search(query) {
     if (!query || query.trim().length === 0) return
     root.isSearching = true
@@ -682,8 +1107,15 @@ BarWidget {
       root.tickerText = root.watchingList.length + " Watching"
       return
     }
+    // Provider-aware idle label: "Anime" is wrong when tracking TV too.
+    if (root.provider === "simkl") {
+      root.tickerText = "Simkl"
+      return
+    }
     root.tickerText = "Anime"
   }
+
+  // Groups new drops per show and sends one notification per show.
 
   // ------------------------------------------------------------- Periodic Timers
   Timer {

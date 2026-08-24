@@ -258,6 +258,219 @@ test("parseMALListResponse handles non-existent and private MAL users gracefully
   assert.equal(res2.error, "MAL watchlist is private")
 })
 
+// ----------------------------------------------------------- Simkl
+
+test("buildSimklPinStartUrl and buildSimklPinPollUrl carry required app params", () => {
+  const startUrl = Logic.buildSimklPinStartUrl("abc123")
+  assert.ok(startUrl.startsWith("https://api.simkl.com/oauth/pin?"))
+  assert.ok(startUrl.includes("client_id=abc123"))
+  assert.ok(startUrl.includes("app-name=anisync"))
+  assert.ok(startUrl.includes("app-version="))
+
+  const pollUrl = Logic.buildSimklPinPollUrl("ABCDE", "abc123")
+  assert.ok(pollUrl.startsWith("https://api.simkl.com/oauth/pin/ABCDE?"))
+  assert.ok(pollUrl.includes("client_id=abc123"))
+})
+
+test("parseSimklPinStart extracts user code and polling cadence", () => {
+  const res = Logic.parseSimklPinStart(JSON.stringify({
+    result: "OK",
+    user_code: "ABCDE",
+    verification_uri: "https://simkl.com/pin",
+    expires_in: 900,
+    interval: 5
+  }))
+  assert.equal(res.ok, true)
+  assert.equal(res.userCode, "ABCDE")
+  assert.equal(res.verificationUrl, "https://simkl.com/pin")
+  assert.equal(res.pollIntervalSecs, 5)
+
+  // Failures never throw
+  assert.equal(Logic.parseSimklPinStart(null).ok, false)
+  assert.equal(Logic.parseSimklPinStart("not json").ok, false)
+  assert.equal(Logic.parseSimklPinStart("{}").ok, false)
+  assert.ok(Logic.parseSimklPinStart(null).error)
+})
+
+test("parseSimklPinPoll walks pending -> authorized -> expired states", () => {
+  const pending = Logic.parseSimklPinPoll('{"result":"KO","message":"Authorization pending"}')
+  assert.equal(pending.state, "pending")
+  assert.equal(pending.accessToken, "")
+
+  const authorized = Logic.parseSimklPinPoll('{"result":"OK","access_token":"tok_123"}')
+  assert.equal(authorized.state, "authorized")
+  assert.equal(authorized.accessToken, "tok_123")
+
+  // device_code in a poll reply means the original code is gone
+  const expired = Logic.parseSimklPinPoll('{"result":"OK","device_code":"DEVICE_CODE","user_code":"ZZZZZ"}')
+  assert.equal(expired.state, "expired")
+
+  // Empty body / garbage stay pending (harmless retry next tick)
+  assert.equal(Logic.parseSimklPinPoll("").state, "pending")
+  assert.equal(Logic.parseSimklPinPoll("garbage").state, "pending")
+})
+
+test("parseSimklUserProfile reads name, avatar, and plan type", () => {
+  const profile = Logic.parseSimklUserProfile(JSON.stringify({
+    user: { name: "akshad", avatar: "https://simkl.in/avatars/x.jpg" },
+    account: { id: 1, type: "free" }
+  }))
+  assert.equal(profile.userName, "akshad")
+  assert.equal(profile.avatar, "https://simkl.in/avatars/x.jpg")
+  assert.equal(profile.accountType, "free")
+
+  const bad = Logic.parseSimklUserProfile('{"error":true}')
+  assert.equal(bad.error, "Could not read Simkl profile")
+  assert.equal(Logic.parseSimklUserProfile(null).error, "No response from Simkl")
+})
+
+test("buildSimklListUrl targets anime and shows watching endpoints", () => {
+  const animeUrl = Logic.buildSimklListUrl("anime", "abc123")
+  assert.ok(animeUrl.startsWith("https://api.simkl.com/sync/all-items/anime/watching?"))
+  assert.ok(animeUrl.includes("next_watch_info=yes"))
+  assert.ok(animeUrl.includes("client_id=abc123"))
+
+  const showsUrl = Logic.buildSimklListUrl("shows", "abc123")
+  assert.ok(showsUrl.startsWith("https://api.simkl.com/sync/all-items/shows/watching?"))
+
+  const tvCal = Logic.buildSimklTvCalendarUrl()
+  assert.equal(tvCal, "https://data.simkl.in/calendar/tv.json")
+})
+
+test("parseSimklCalendar flattens CDN rows into simkl and mal keyed schedules", () => {
+  const cal = Logic.parseSimklCalendar(JSON.stringify([
+    {
+      title: "One Piece",
+      date: "2026-08-23T02:30:00+09:00",
+      url: "https://simkl.com/anime/1/op/episode-1175/",
+      ids: { simkl_id: 1, mal: 21 },
+      episode: { episode: 1175 }
+    },
+    { date: null }, // malformed rows are skipped silently
+    { date: "2026-08-24T00:00:00+09:00", episode: {} }
+  ]))
+
+  assert.ok(cal["s1"])
+  assert.equal(cal["s1"].episode, 1175)
+  assert.equal(typeof cal["s1"].airingAt, "number")
+  assert.deepEqual(cal["m21"], cal["s1"])
+
+  // Garbage input yields an empty map, never a throw
+  assert.deepEqual(Logic.parseSimklCalendar(null), {})
+  assert.deepEqual(Logic.parseSimklCalendar("nope"), {})
+})
+
+test("simklPosterUrl builds absolute poster URLs and falls back to placeholder", () => {
+  assert.equal(
+    Logic.simklPosterUrl("74/74415673dcdc9cdd"),
+    "https://simkl.in/posters/74/74415673dcdc9cdd_w.webp"
+  )
+  assert.equal(
+    Logic.simklPosterUrl(""),
+    "https://simkl.in/poster_no_pic_c.png"
+  )
+})
+
+test("parseSimklResponse standardizes watching list and joins calendar airing times", () => {
+  const now = Math.floor(Date.now() / 1000)
+  const airingIn2h = now + 7200
+  const mock = {
+    anime: [
+      {
+        status: "watching",
+        watched_episodes_count: 1100,
+        total_episodes_count: null,
+        not_aired_episodes_count: 3,
+        user_rating: 10,
+        next_to_watch_info: { title: "ONE PIECE", season: 1, episode: 1174, date: null },
+        anime: {
+          title: "ONE PIECE",
+          poster: "74/74415673dcdc9cdd",
+          ids: { simkl: 1, mal: "21", anilist: "20958" }
+        }
+      },
+      {
+        status: "watching",
+        watched_episodes_count: 4,
+        total_episodes_count: 12,
+        not_aired_episodes_count: 8,
+        anime: {
+          title: "Fragrant Air Season 2",
+          poster: "",
+          ids: { simkl: 2, mal: null }
+        },
+        next_to_watch_info: { episode: 5, date: new Date((now + 3600) * 1000).toISOString() }
+      }
+    ]
+  }
+
+  const calendarMap = {
+    s1: { episode: 1175, airingAt: airingIn2h, siteUrl: "https://simkl.com/anime/1/op/episode-1175/" }
+  }
+
+  const parsed = Logic.parseSimklResponse(mock, {}, calendarMap)
+  assert.equal(parsed.error, null)
+  assert.equal(parsed.watchingAnime.length, 2)
+
+  const op = parsed.watchingAnime.find(i => i.mediaId === 1)
+  assert.equal(op.title, "ONE PIECE")
+  assert.equal(op.mediaId, 1)
+  assert.equal(op.progress, 1100)
+  assert.equal(op.status, "RELEASING")
+  assert.equal(op.source, "SIMKL")
+  assert.equal(op.malId, 21)
+  assert.equal(op.anilistId, 20958)
+  assert.equal(op.cover, "https://simkl.in/posters/74/74415673dcdc9cdd_w.webp")
+  // Calendar join wins over the entry's own info; site URL upgraded to the episode link
+  assert.equal(op.nextEpisode, 1175)
+  assert.equal(op.airingAt, airingIn2h)
+  assert.equal(op.siteUrl, "https://simkl.com/anime/1/op/episode-1175/")
+  assert.equal(parsed.upcomingAnime.length, 2)
+  assert.equal(parsed.upcomingAnime[0].mediaId, 2) // airs sooner, sorted first
+
+  // Manga never exists on Simkl
+  assert.equal(parsed.readingManga.length, 0)
+})
+
+test("parseSimklResponse marks finished shows for finale detection via detectDrops", () => {
+  const showId = 555
+  const makePayload = () => ({
+    anime: [
+      {
+        status: "watching",
+        watched_episodes_count: 13,
+        total_episodes_count: 14,
+        not_aired_episodes_count: 0,
+        anime: { title: "Ending Show", ids: { simkl: showId } }
+      }
+    ]
+  })
+
+  // Baseline: ep 14 upcoming records state without alerting
+  const withUpcoming = makePayload()
+  withUpcoming.anime[0].not_aired_episodes_count = 1
+  const calendarMap = { ["s" + showId]: { episode: 14, airingAt: Math.floor(Date.now() / 1000) + 3600 } }
+  const sync1 = Logic.parseSimklResponse(withUpcoming, { seen: {}, lastEp: {}, initialized: false }, calendarMap)
+  assert.equal(sync1.newDrops.length, 0)
+  assert.equal(sync1.updatedTrackerState.lastEp[showId], 14)
+
+  // Finale aired: calendar no longer lists it, status flips to FINISHED,
+  // detectDrops catches up the missed episode exactly once
+  const afterFinale = makePayload()
+  const sync2 = Logic.parseSimklResponse(afterFinale, sync1.updatedTrackerState, {})
+  assert.equal(sync2.newDrops.length, 1)
+  assert.equal(sync2.newDrops[0].episode, 14)
+})
+
+test("parseSimklResponse handles empty list and invalid payloads gracefully", () => {
+  const empty = Logic.parseSimklResponse({ anime: [] }, {})
+  assert.equal(empty.error, null)
+  assert.equal(empty.watchingAnime.length, 0)
+
+  assert.equal(Logic.parseSimklResponse(null, {}).error, "No response from Simkl")
+  assert.equal(Logic.parseSimklResponse("garbage", {}).error, "Invalid Simkl response format")
+})
+
 test("parseAniListResponse only includes CURRENT watching anime and CURRENT reading manga", () => {
   const mock = {
     data: {
