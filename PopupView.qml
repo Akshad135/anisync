@@ -2093,17 +2093,9 @@ Item {
                 cursorShape: root.canSync ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: {
                   if (root.canSync && host) {
-                    // Commit the drafted form; BarWidget wipes old account state
-                    // only when provider/userName actually changed. Simkl has no
-                    // username — its account is the OAuth token itself.
-                    if (host.updateSetting) {
-                      host.updateSetting("provider", root.draftProvider)
-                      if (root.draftProvider !== "simkl") {
-                        host.updateSetting("userName", root.draftUserName.trim())
-                      }
-                      host.updateSetting("customBanner", root.draftCustomBanner)
+                    if (host.applyAccount) {
+                      host.applyAccount(root.draftProvider, root.draftUserName, root.draftCustomBanner)
                     }
-                    if (host.sync) host.sync()
                   }
                 }
               }

@@ -89,9 +89,6 @@ BarWidget {
     if (popupOpen) {
       // Discard abandoned draft edits from a previous popup session
       if (popupView.beginDrafts) popupView.beginDrafts()
-      if (root.userName && root.watchingList.length === 0) {
-        root.sync()
-      }
     }
   }
 
@@ -192,6 +189,30 @@ BarWidget {
     settingsFile.setText(JSON.stringify(payload, null, 2) + "\n")
   }
 
+  function applyAccount(newProvider, newUserName, newCustomBanner) {
+    var p = String(newProvider || "anilist").trim()
+    var u = String(newUserName || "").trim()
+    var b = String(newCustomBanner || "").trim()
+
+    root.provider = p
+    root.customBanner = b
+
+    if (p === "simkl") {
+      root.userName = ""
+    } else {
+      root.userName = u
+      // Switching to a non-Simkl provider clears any Simkl token
+      root.simklToken = ""
+      root.simklUserCode = ""
+      root.simklPinExpiresAt = 0
+      root.simklLinking = false
+    }
+
+    root.saveSettings()
+    root.resetAccount()
+    root.sync()
+  }
+
   function updateSetting(key, val) {
     if (key === "showAnime") root.showAnime = val
     else if (key === "showManga") root.showManga = val
@@ -199,26 +220,6 @@ BarWidget {
     else if (key === "notifyOnRelease") root.notifyOnRelease = val
     else if (key === "notifyManga") root.notifyManga = val
     else if (key === "checkIntervalMins") root.checkIntervalMins = val
-    else if (key === "provider") {
-      var p = String(val || "").trim()
-      if (p !== root.provider) {
-        root.provider = p
-        root.userName = ""
-        root.userAvatar = ""
-        root.userBanner = ""
-        root.saveSettings()
-        root.resetAccount()
-      }
-      return
-    } else if (key === "userName") {
-      var u = String(val || "").trim()
-      if (u !== root.userName) {
-        root.userName = u
-        root.saveSettings()
-        root.resetAccount()
-      }
-      return
-    }
     root.saveSettings()
   }
 
