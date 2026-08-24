@@ -302,6 +302,7 @@ BarWidget {
     root.userBanner = ""
     root.lastSyncText = ""
     root.syncError = ""
+    root.isFetching = false
     root.tickerText = "Anime"
     root.saveCache()
   }
@@ -612,7 +613,7 @@ BarWidget {
     if (message) root.syncError = message
   }
 
-  function unlinkSimkl() {
+  function unlinkSimkl(message) {
     pinPollTimer.stop()
     root.simklToken = ""
     root.simklUserCode = ""
@@ -620,6 +621,7 @@ BarWidget {
     root.simklLinking = false
     root.saveSettings()
     root.resetAccount()
+    if (message) root.syncError = message
   }
 
   function openUrl(url) {
@@ -943,8 +945,7 @@ BarWidget {
 
     // 401 = token revoked from the Simkl dashboard: drop it and force re-link.
     if (split.status === "401" || split.status === "403") {
-      root.syncError = "Simkl connection revoked — reconnect your account"
-      unlinkSimkl()
+      unlinkSimkl("Simkl connection revoked — reconnect your account")
       return
     }
 
@@ -957,8 +958,7 @@ BarWidget {
     if (root.simklGen !== root.syncGen) return
     var split = Logic.splitCurlHttpStatus(rawText)
     if (split.status === "401" || split.status === "403") {
-      root.syncError = "Simkl connection revoked — reconnect your account"
-      unlinkSimkl()
+      unlinkSimkl("Simkl connection revoked — reconnect your account")
       return
     }
     root.pendingSimklShowsRaw = split.body || ""

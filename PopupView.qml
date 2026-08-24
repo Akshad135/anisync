@@ -93,18 +93,21 @@ Item {
   function beginDrafts() {
     if (root.simklLinking || root.simklUserCode.length > 0) {
       root.selectedProviderTab = "simkl"
-    } else if (!root.selectedProviderTab) {
+    } else {
       root.selectedProviderTab = root.provider || "anilist"
     }
     root.draftProvider = root.selectedProviderTab
     settingsPanelItem.activeAccountTab = root.selectedProviderTab
     if (root.selectedProviderTab === "simkl") {
       root.draftUserName = ""
-    } else if (root.selectedProviderTab === root.provider) {
-      root.draftUserName = root.userName
-      userInput.text = root.userName
+      userInput.text = ""
+    } else {
+      var u = (root.selectedProviderTab === root.provider) ? root.userName : ""
+      root.draftUserName = u
+      userInput.text = u
     }
     root.draftCustomBanner = root.customBanner
+    bannerInput.text = root.customBanner
   }
 
   onProviderChanged: {
@@ -113,6 +116,7 @@ Item {
     if (root.provider === "simkl") {
       settingsPanelItem.activeAccountTab = "simkl"
       root.draftUserName = ""
+      userInput.text = ""
     } else {
       root.draftUserName = root.userName
       userInput.text = root.userName
@@ -133,7 +137,7 @@ Item {
 
   onShowAnimeChanged: {
     if (!root.showAnime && root.activeTabId === "anime") {
-      root.activeTabId = root.showManga ? "manga" : "explore"
+      root.activeTabId = (root.showManga && root.mangaAvailable) ? "manga" : "explore"
     }
   }
 
@@ -1275,9 +1279,11 @@ Item {
                         root.draftProvider = modelData.id
                         if (modelData.id === "simkl") {
                           root.draftUserName = ""
-                        } else if (modelData.id === root.provider) {
-                          root.draftUserName = root.userName
-                          userInput.text = root.userName
+                          userInput.text = ""
+                        } else {
+                          var u = (modelData.id === root.provider) ? root.userName : ""
+                          root.draftUserName = u
+                          userInput.text = u
                         }
                       }
                     }
@@ -1682,8 +1688,9 @@ Item {
             Layout.fillWidth: true
             spacing: Style.space(10)
 
-            // Col 1: Display Sections (50% equal width)
+            // Col 1: Display Sections (Hidden for Simkl)
             ColumnLayout {
+              visible: settingsPanelItem.activeAccountTab !== "simkl"
               Layout.fillWidth: true
               Layout.preferredWidth: 1
               spacing: Style.space(5)
@@ -1740,6 +1747,7 @@ Item {
 
               // Manga Toggle Tile
               Rectangle {
+                visible: settingsPanelItem.activeAccountTab !== "simkl"
                 Layout.fillWidth: true
                 height: Style.space(36)
                 radius: Style.cornerRadius
@@ -1783,7 +1791,7 @@ Item {
               }
             }
 
-            // Col 2: Release Alerts (50% equal width)
+            // Col 2: Release Alerts (50% equal width or full width when Simkl)
             ColumnLayout {
               Layout.fillWidth: true
               Layout.preferredWidth: 1
@@ -1839,8 +1847,9 @@ Item {
                 }
               }
 
-              // Manga Alerts Toggle Tile
+              // Manga Alerts Toggle Tile (Hidden for Simkl)
               Rectangle {
+                visible: settingsPanelItem.activeAccountTab !== "simkl"
                 Layout.fillWidth: true
                 height: Style.space(36)
                 radius: Style.cornerRadius

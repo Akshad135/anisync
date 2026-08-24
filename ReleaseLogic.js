@@ -991,11 +991,7 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
           break
         }
       }
-      // If none in the future, fallback to latest in calendar
-      if (!calInfo) {
-        calInfo = calEpisodes[calEpisodes.length - 1]
-      }
-    } else if (calEpisodes && typeof calEpisodes === "object") {
+    } else if (calEpisodes && typeof calEpisodes === "object" && calEpisodes.airingAt > nowSec) {
       calInfo = calEpisodes
     }
 
@@ -1006,9 +1002,12 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
     } else if (row.next_to_watch_info && row.next_to_watch_info.date) {
       var ntwMs = Date.parse(String(row.next_to_watch_info.date))
       if (!isNaN(ntwMs)) {
-        item.airingAt = Math.floor(ntwMs / 1000)
-        if (row.next_to_watch_info.episode !== undefined && row.next_to_watch_info.episode !== null) {
-          item.nextEpisode = row.next_to_watch_info.episode
+        var ntwSec = Math.floor(ntwMs / 1000)
+        if (ntwSec > nowSec) {
+          item.airingAt = ntwSec
+          if (row.next_to_watch_info.episode !== undefined && row.next_to_watch_info.episode !== null) {
+            item.nextEpisode = row.next_to_watch_info.episode
+          }
         }
       }
     }
