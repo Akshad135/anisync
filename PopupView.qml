@@ -34,6 +34,7 @@ Item {
   property bool notifyOnRelease: host ? host.notifyOnRelease : true
   property bool notifyManga: host ? host.notifyManga : true
   property int checkIntervalMins: host ? host.checkIntervalMins : 30
+  property string tickerMode: host ? (host.tickerMode || "full") : "full"
 
   // Tick every 15s to refresh countdown strings
   property int tickCounter: 0
@@ -1891,6 +1892,97 @@ Item {
                   }
                 }
               }
+            }
+          }
+
+          // Section Divider
+          Rectangle {
+            Layout.fillWidth: true
+            height: 1
+            color: Util.alpha(colBorder, 0.2)
+          }
+
+          // --------------------------------------------- SECTION: Top Bar Display
+          ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Style.space(6)
+
+            RowLayout {
+              spacing: Style.space(4)
+              Text {
+                text: "󰵪"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                color: colAccent
+              }
+              Text {
+                text: "Top Bar Display"
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                font.bold: true
+                color: colForeground
+              }
+            }
+
+            Rectangle {
+              Layout.fillWidth: true
+              height: Style.space(32)
+              radius: Style.cornerRadius
+              color: Util.alpha(colForeground, 0.06)
+
+              RowLayout {
+                anchors.fill: parent
+                anchors.margins: Style.space(3)
+                spacing: Style.space(4)
+
+                Repeater {
+                  model: [
+                    { id: "icon", label: "Icon Only" },
+                    { id: "time", label: "Time Only" },
+                    { id: "full", label: "Full" }
+                  ]
+
+                  delegate: Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: Style.cornerRadius - 1
+                    color: (root.tickerMode === modelData.id) 
+                      ? colAccent 
+                      : (modeHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: modelData.label
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                      font.bold: (root.tickerMode === modelData.id)
+                      color: (root.tickerMode === modelData.id) ? "#12131a" : (modeHover.containsMouse ? colForeground : colDim)
+                    }
+
+                    MouseArea {
+                      id: modeHover
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      cursorShape: Qt.PointingHandCursor
+                      onClicked: {
+                        if (host && host.updateSetting) host.updateSetting("tickerMode", modelData.id)
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            Text {
+              Layout.fillWidth: true
+              text: {
+                if (root.tickerMode === "icon") return "Shows only the plugin glyph (󰵪) on the top bar"
+                if (root.tickerMode === "time") return "Shows icon + time until next episode (e.g. 󰵪 in 2h)"
+                return "Shows icon + show name + countdown (e.g. 󰵪 One Piece Ep 1175 · in 2h)"
+              }
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              color: Qt.lighter(colDim, 1.25)
             }
           }
 

@@ -703,7 +703,7 @@ function splitCurlHttpStatus(rawText) {
 var SIMKL_API_BASE = "https://api.simkl.com"
 var SIMKL_CALENDAR_URL = "https://data.simkl.in/calendar/anime.json"
 var SIMKL_APP_NAME = "anisync"
-var SIMKL_APP_VERSION = "1.2.0"
+var SIMKL_APP_VERSION = "1.2.1"
 
 // client_id / app-name / app-version are required URL parameters on every
 // Simkl request (see api.simkl.org/conventions/headers).
@@ -1124,6 +1124,18 @@ function formatShortTicker(item) {
   return title + epStr + " · " + timeStr
 }
 
+function formatTimeTicker(item) {
+  if (!item) return ""
+  return formatCountdown(item.airingAt)
+}
+
+function formatTicker(item, mode) {
+  if (!item) return ""
+  if (mode === "icon") return ""
+  if (mode === "time") return formatTimeTicker(item)
+  return formatShortTicker(item)
+}
+
 function formatAiringTime(epochSecs) {
   if (!epochSecs) return ""
   var date = new Date(epochSecs * 1000)
@@ -1195,6 +1207,8 @@ if (typeof module !== "undefined" && module.exports) {
     parseSimklResponse: parseSimklResponse,
     formatCountdown: formatCountdown,
     formatShortTicker: formatShortTicker,
+    formatTimeTicker: formatTimeTicker,
+    formatTicker: formatTicker,
     formatAiringTime: formatAiringTime,
     formatRelativeTime: formatRelativeTime,
     getTitle: getTitle,

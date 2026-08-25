@@ -765,5 +765,31 @@ test("cache automatically prunes shows when moved out of CURRENT (completed/paus
   assert.equal(parsed.updatedTrackerState.seen[`${show2}:3`], undefined)
 })
 
+test("formatTicker and formatTimeTicker support icon, time, and full ticker display modes", () => {
+  const now = Math.floor(Date.now() / 1000)
+  const item = {
+    title: "Chainsaw Man",
+    nextEpisode: 12,
+    airingAt: now + 7200 // in 2 hours
+  }
+
+  // formatTimeTicker returns only the formatted countdown
+  assert.equal(Logic.formatTimeTicker(item), "in 2h")
+  assert.equal(Logic.formatTimeTicker(null), "")
+
+  // formatTicker with "icon" mode returns empty string (glyph handled by UI)
+  assert.equal(Logic.formatTicker(item, "icon"), "")
+
+  // formatTicker with "time" mode returns countdown only (e.g. "in 2h")
+  assert.equal(Logic.formatTicker(item, "time"), "in 2h")
+
+  // formatTicker with "full" mode returns show title, episode, and countdown
+  assert.equal(Logic.formatTicker(item, "full"), "Chainsaw Man Ep 12 · in 2h")
+
+  // null handling
+  assert.equal(Logic.formatTicker(null, "full"), "")
+})
+
+
 
 

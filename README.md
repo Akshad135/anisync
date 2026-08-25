@@ -8,7 +8,7 @@ A native [Omarchy](https://omarchy.org/) status bar and popup plugin that synchr
 
 - **Three Providers:** Connect a public AniList or MyAnimeList account by username — no passwords or OAuth tokens. Or link **Simkl** via the device PIN flow: a short code, no password entry in the plugin.
 - **Live Release Schedules on MAL and Simkl too:** MAL watchlists are enriched with exact airing times via AniList's public API (exact ID matching, no fuzzy title search), and Simkl watchlists are joined against Simkl's public airing calendar — so countdowns and alerts work identically across all three providers.
-- **Top Bar Countdown Ticker:** Live pill on your status bar showing your next upcoming episode (e.g. `One Piece Ep 1175 · in 2h`).
+- **Top Bar Countdown Ticker:** Live pill on your status bar with customizable display modes: **Icon Only** (`󰵪`), **Time Only** (`󰵪 in 2h`), or **Full** (`󰵪 One Piece Ep 1175 · in 2h`).
 - **Batched Desktop Notifications:** Native alerts via `omarchy-notification-send` when new releases air. Multiple missed episodes are grouped per show (`4 New Episodes: One Piece (Ep 1170–1173)`) — one notification per show, never spam.
 - **Instant Startup & Offline Resilience:** A local cache snapshot renders your lists immediately on shell start — even fully offline — while a background sync refreshes in the background. Failed syncs never blank the UI.
 - **Dynamic Theming & Ambient Artwork:** Automatically harmonizes with your active Omarchy theme (`colors.toml`), with smart fallback to your currently watching show's cover art or custom banner image.
@@ -16,7 +16,7 @@ A native [Omarchy](https://omarchy.org/) status bar and popup plugin that synchr
   - **Anime:** Live upcoming episode timeline with exact countdowns and active watchlist.
   - **Manga:** Reading list progress tracking with chapter counts and scores.
   - **Explore:** Search across AniList for any anime or manga with direct links and copyable URLs.
-  - **Settings:** Provider switch, username, section toggles, release alerts, background check frequencies, and custom banner backdrop (drafted freely, applied on Save & Sync).
+  - **Settings:** Provider switch, username, top bar display mode, section toggles, release alerts, background check frequencies, and custom banner backdrop (drafted freely, applied on Save & Sync).
 - **IPC & CLI Integration:** Trigger sync, open, close, or toggle the popup via `omarchy-shell akshad135.anisync <action>`.
 
 ---
@@ -49,6 +49,7 @@ Settings can be customized directly in the plugin drawer via the settings gear i
 - **Provider:** `anilist`, `mal`, or `simkl` — one active account at a time.
 - **Username (AniList / MAL):** Your public AniList or MyAnimeList username (matching the provider).
 - **Simkl:** Click **Connect Simkl Account** — a browser window opens at [simkl.com/pin](https://simkl.com/pin/); enter the short code shown in the plugin. The access token is long-lived (~5 years) and stored locally; revoke anytime from Simkl's Connected Apps settings and reconnect. Manga tracking is unavailable on Simkl (the Manga tab hides automatically).
+- **Top Bar Display:** Choose between **Icon Only** (glyph only), **Time Only** (icon + countdown time), or **Full** (icon + show title + countdown time).
 - **Sections:** Toggle Anime and Manga view tabs.
 - **Alerts:** Enable or disable desktop notifications for new releases.
 - **Sync Frequency:** Set periodic refresh interval (`15m`, `30m`, `1h`, `2h`, or `Manual`).

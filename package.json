@@ -1,6 +1,6 @@
 {
   "name": "omarchy-anisync",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Anime & Manga release tracker for Omarchy status bar",
   "main": "ReleaseLogic.js",
   "scripts": {
@@ -11,6 +11,7 @@
     "quickshell",
     "anilist",
     "myanimelist",
+    "simkl",
     "anime",
     "manga",
     "anisync",

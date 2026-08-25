@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "akshad135.anisync",
   "name": "AniSync",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": "Akshad Agrawal",
   "license": "MIT",
   "description": "Anime & Manga release tracker with AniList, MyAnimeList, and Simkl sync, countdown timers, and desktop notifications",
@@ -22,10 +22,11 @@
     "defaultSection": "right",
     "defaults": {
       "provider": "anilist",
-      "userName": "akshad",
+      "userName": "",
       "checkIntervalMins": 30,
       "notifyOnRelease": true,
-      "notifyManga": true
+      "notifyManga": true,
+      "tickerMode": "full"
     }
   }
 }

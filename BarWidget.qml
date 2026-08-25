@@ -25,6 +25,8 @@ BarWidget {
   property bool notifyOnRelease: true
   property bool notifyManga: true
   property int checkIntervalMins: 30
+  property string tickerMode: "full" // "icon", "time", "full"
+  onTickerModeChanged: root.updateTicker()
 
   // Simkl PIN flow state: idle -> awaiting (code shown) -> connected.
   // The token is long-lived (~5 years); only a revoke invalidates it.
@@ -152,6 +154,7 @@ BarWidget {
       if (s.notifyOnRelease !== undefined) root.notifyOnRelease = s.notifyOnRelease
       if (s.notifyManga !== undefined) root.notifyManga = s.notifyManga
       if (s.checkIntervalMins !== undefined) root.checkIntervalMins = s.checkIntervalMins
+      if (s.tickerMode !== undefined) root.tickerMode = s.tickerMode
       if (s.customBanner !== undefined) root.customBanner = s.customBanner
       if (s.simklToken !== undefined) root.simklToken = String(s.simklToken || "")
 
@@ -184,6 +187,7 @@ BarWidget {
       notifyOnRelease: root.notifyOnRelease,
       notifyManga: root.notifyManga,
       checkIntervalMins: root.checkIntervalMins,
+      tickerMode: root.tickerMode,
       simklToken: root.simklToken
     }
     settingsFile.setText(JSON.stringify(payload, null, 2) + "\n")
@@ -220,6 +224,10 @@ BarWidget {
     else if (key === "notifyOnRelease") root.notifyOnRelease = val
     else if (key === "notifyManga") root.notifyManga = val
     else if (key === "checkIntervalMins") root.checkIntervalMins = val
+    else if (key === "tickerMode") {
+      root.tickerMode = val
+      root.updateTicker()
+    }
     root.saveSettings()
   }
 
@@ -1112,7 +1120,11 @@ BarWidget {
   function updateTicker() {
     if (root.upcomingList && root.upcomingList.length > 0) {
       var next = root.upcomingList[0]
-      root.tickerText = Logic.formatShortTicker(next)
+      if (root.tickerMode === "time") {
+        root.tickerText = Logic.formatCountdown(next.airingAt)
+      } else {
+        root.tickerText = Logic.formatShortTicker(next)
+      }
       return
     }
     if (root.watchingList && root.watchingList.length > 0) {
@@ -1155,8 +1167,13 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.barIcon + (root.tickerText || "Anime")
-    tooltipText: root.tickerText ? root.tickerText : "AniSync"
+    text: root.tickerMode === "icon" ? "󰵪" : (root.barIcon + (root.tickerText || "Anime"))
+    tooltipText: {
+      if (root.upcomingList && root.upcomingList.length > 0) {
+        return Logic.formatShortTicker(root.upcomingList[0])
+      }
+      return root.tickerText ? root.tickerText : "AniSync"
+    }
 
     onPressed: function(b) {
       if (b === Qt.RightButton) {
