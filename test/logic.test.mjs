@@ -848,6 +848,17 @@ test("formatTicker and formatTimeTicker support icon, time, and full ticker disp
   assert.equal(Logic.formatTicker(null, "full"), "")
 })
 
+test("formatShortTicker correctly displays Episode 0 without treating it as falsy", () => {
+  const now = Math.floor(Date.now() / 1000)
+  const item = {
+    title: "Fate/Zero",
+    nextEpisode: 0,
+    airingAt: now + 3600
+  }
+
+  assert.equal(Logic.formatShortTicker(item), "Fate/Zero Ep 0 · in 1h")
+})
+
 
 
 

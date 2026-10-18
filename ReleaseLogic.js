@@ -1088,7 +1088,7 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
 
     result.watchingAnime.push(item)
 
-    if (item.airingAt && item.airingAt > nowSec && item.nextEpisode) {
+    if (item.airingAt && item.airingAt > nowSec && item.nextEpisode !== null && item.nextEpisode !== undefined) {
       result.upcomingAnime.push(item)
     }
   }
@@ -1192,7 +1192,7 @@ function formatShortTicker(item) {
   if (title.length > 13) {
     title = title.substring(0, 11) + "…"
   }
-  var epStr = item.nextEpisode ? (" Ep " + item.nextEpisode) : ""
+  var epStr = (item.nextEpisode !== null && item.nextEpisode !== undefined) ? (" Ep " + item.nextEpisode) : ""
   var timeStr = formatCountdown(item.airingAt)
   return title + epStr + " · " + timeStr
 }

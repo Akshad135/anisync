@@ -417,8 +417,8 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
-      if (root.malGen === root.syncGen && root.pendingEnrichTarget) {
-        if (exitCode !== 0 && !root.syncError) {
+      if (exitCode !== 0 && root.malGen === root.syncGen && root.pendingEnrichTarget) {
+        if (!root.syncError) {
           root.syncError = "AniList API is down or unreachable"
         }
         var target = root.pendingEnrichTarget
