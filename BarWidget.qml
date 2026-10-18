@@ -690,6 +690,7 @@ BarWidget {
   }
 
   function sync() {
+    if (!root.ready) return
     // Anilist/MAL key off a public username; Simkl keys off the OAuth token.
     if (!root.userName && !(root.provider === "simkl" && root.simklToken)) return
     root.syncGen++
