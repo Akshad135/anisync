@@ -9,6 +9,20 @@ import "ReleaseLogic.js" as Logic
 
 Item {
   id: root
+  focus: true
+  Keys.priority: Keys.AfterItem
+  Keys.onPressed: function(event) {
+    if (event.key === Qt.Key_Escape) {
+      if (root.isSettingsOpen) {
+        root.isSettingsOpen = false
+      } else if (host && host.close) {
+        host.close()
+      }
+      event.accepted = true
+    }
+  }
+
+  Component.onCompleted: root.forceActiveFocus()
 
   // Injected from BarWidget host
   property var host: null
@@ -88,6 +102,12 @@ Item {
   property string draftProvider: root.provider
   property string draftUserName: root.userName
   property string draftCustomBanner: root.customBanner
+  property bool draftShowAnime: root.showAnime
+  property bool draftShowManga: root.showManga
+  property bool draftNotifyOnRelease: root.notifyOnRelease
+  property bool draftNotifyManga: root.notifyManga
+  property string draftTickerMode: root.tickerMode
+  property int draftCheckIntervalMins: root.checkIntervalMins
 
   // Re-syncs drafts from committed state. Called when the settings panel opens
   // and whenever the whole popup reopens, so abandoned edits never leak.
@@ -109,6 +129,12 @@ Item {
     }
     root.draftCustomBanner = root.customBanner
     bannerInput.text = root.customBanner
+    root.draftShowAnime = root.showAnime
+    root.draftShowManga = root.showManga
+    root.draftNotifyOnRelease = root.notifyOnRelease
+    root.draftNotifyManga = root.notifyManga
+    root.draftTickerMode = root.tickerMode
+    root.draftCheckIntervalMins = root.checkIntervalMins
   }
 
   onProviderChanged: {
@@ -514,8 +540,9 @@ Item {
 
         delegate: Rectangle {
           id: animeCard
+          readonly property bool hasAiring: modelData.nextEpisode !== null && modelData.nextEpisode !== undefined && modelData.airingAt > 0
           width: animeListView.width
-          height: modelData.nextEpisode ? Style.space(68) : Style.space(56)
+          height: animeCard.hasAiring ? Style.space(68) : Style.space(56)
           radius: Style.cornerRadius
           color: animeCardMouse.containsMouse ? Util.alpha(colAccent, 0.12) : "transparent"
           border.color: animeCardMouse.containsMouse ? Util.alpha(colAccent, 0.3) : "transparent"
@@ -536,7 +563,7 @@ Item {
             // Cover Image
             Rectangle {
               width: Style.space(36)
-              height: modelData.nextEpisode ? Style.space(54) : Style.space(44)
+              height: animeCard.hasAiring ? Style.space(54) : Style.space(44)
               radius: 4
               clip: true
               color: Util.alpha(colForeground, 0.08)
@@ -605,7 +632,7 @@ Item {
 
               // Next Airing Countdown Chip & Schedule
               RowLayout {
-                visible: modelData.nextEpisode !== null && modelData.nextEpisode !== undefined && modelData.airingAt > 0
+                visible: animeCard.hasAiring
                 spacing: Style.space(6)
 
                 Rectangle {
@@ -639,7 +666,7 @@ Item {
 
               // Status for finished shows without upcoming episodes
               Text {
-                visible: (!modelData.nextEpisode || !modelData.airingAt)
+                visible: !animeCard.hasAiring
                 text: modelData.status === "FINISHED" ? ("Completed · " + (modelData.totalEpisodes || modelData.progress) + " eps") : (modelData.status || "")
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -963,11 +990,21 @@ Item {
           activeFocusOnPress: true
 
           onTextEdited: {
-            searchDebounce.restart()
+            if (text.trim().length < 2) {
+              searchDebounce.stop()
+              if (host && host.clearSearch) host.clearSearch()
+            } else {
+              searchDebounce.restart()
+            }
           }
 
           onAccepted: {
-            if (host && host.search) host.search(text.trim())
+            searchDebounce.stop()
+            if (text.trim().length >= 2) {
+              if (host && host.search) host.search(text.trim())
+            } else {
+              if (host && host.clearSearch) host.clearSearch()
+            }
           }
 
           Keys.priority: Keys.BeforeItem
@@ -1076,7 +1113,8 @@ Item {
                   Text {
                     text: {
                       var dummy = root.tickCounter
-                      return modelData.nextEpisode ? ("Ep " + modelData.nextEpisode + " " + Logic.formatCountdown(modelData.airingAt)) : (modelData.status || "")
+                      var hasAiring = modelData.nextEpisode !== null && modelData.nextEpisode !== undefined && modelData.airingAt > 0
+                      return hasAiring ? ("Ep " + modelData.nextEpisode + " " + Logic.formatCountdown(modelData.airingAt)) : (modelData.status || "")
                     }
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
@@ -1263,8 +1301,8 @@ Item {
                         color: providerCell.isActive ? "#12131a" : "#4ade80"
                         // Green dot marks providers with an active connection
                         visible: {
-                          if (modelData.id === "simkl") return root.simklToken.length > 0
-                          return root.draftProvider === modelData.id && root.draftUserName.trim().length > 0
+                          if (modelData.id === "simkl") return root.provider === "simkl" && root.simklToken.length > 0
+                          return root.provider === modelData.id && root.userName.trim().length > 0
                         }
                       }
                     }
@@ -1311,6 +1349,13 @@ Item {
 
                 onTextEdited: {
                   root.draftUserName = text.trim()
+                }
+
+                Keys.onPressed: function(event) {
+                  if (event.key === Qt.Key_Escape) {
+                    root.isSettingsOpen = false
+                    event.accepted = true
+                  }
                 }
               }
 
@@ -1689,9 +1734,8 @@ Item {
             Layout.fillWidth: true
             spacing: Style.space(10)
 
-            // Col 1: Display Sections (Hidden for Simkl)
+            // Col 1: Display Sections (Library visible for all, Manga hidden for Simkl)
             ColumnLayout {
-              visible: settingsPanelItem.activeAccountTab !== "simkl"
               Layout.fillWidth: true
               Layout.preferredWidth: 1
               spacing: Style.space(5)
@@ -1708,7 +1752,7 @@ Item {
                 height: Style.space(36)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
-                border.color: root.showAnime ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
+                border.color: root.draftShowAnime ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
                 border.width: 1
 
                 RowLayout {
@@ -1716,22 +1760,22 @@ Item {
                   anchors.margins: Style.space(7)
                   spacing: Style.space(6)
 
-                  Text { text: "󰿎"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.showAnime ? colAccent : colDim }
+                  Text { text: "󰿎"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.draftShowAnime ? colAccent : colDim }
                   Text { Layout.fillWidth: true; text: "Library"; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; color: colForeground }
 
                   Rectangle {
                     width: Style.space(30)
                     height: Style.space(16)
                     radius: 8
-                    color: root.showAnime ? colAccent : Util.alpha(colForeground, 0.15)
+                    color: root.draftShowAnime ? colAccent : Util.alpha(colForeground, 0.15)
 
                     Rectangle {
                       width: Style.space(12)
                       height: Style.space(12)
                       radius: 6
-                      color: root.showAnime ? "#12131a" : colDim
+                      color: root.draftShowAnime ? "#12131a" : colDim
                       anchors.verticalCenter: parent.verticalCenter
-                      x: root.showAnime ? (parent.width - width - 2) : 2
+                      x: root.draftShowAnime ? (parent.width - width - 2) : 2
                       Behavior on x { NumberAnimation { duration: 120 } }
                     }
                   }
@@ -1741,7 +1785,7 @@ Item {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (host && host.updateSetting) host.updateSetting("showAnime", !root.showAnime)
+                    root.draftShowAnime = !root.draftShowAnime
                   }
                 }
               }
@@ -1753,7 +1797,7 @@ Item {
                 height: Style.space(36)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
-                border.color: root.showManga ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
+                border.color: root.draftShowManga ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
                 border.width: 1
 
                 RowLayout {
@@ -1761,22 +1805,22 @@ Item {
                   anchors.margins: Style.space(7)
                   spacing: Style.space(6)
 
-                  Text { text: "󰂿"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.showManga ? colAccent : colDim }
+                  Text { text: "󰂿"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.draftShowManga ? colAccent : colDim }
                   Text { Layout.fillWidth: true; text: "Manga"; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; color: colForeground }
 
                   Rectangle {
                     width: Style.space(30)
                     height: Style.space(16)
                     radius: 8
-                    color: root.showManga ? colAccent : Util.alpha(colForeground, 0.15)
+                    color: root.draftShowManga ? colAccent : Util.alpha(colForeground, 0.15)
 
                     Rectangle {
                       width: Style.space(12)
                       height: Style.space(12)
                       radius: 6
-                      color: root.showManga ? "#12131a" : colDim
+                      color: root.draftShowManga ? "#12131a" : colDim
                       anchors.verticalCenter: parent.verticalCenter
-                      x: root.showManga ? (parent.width - width - 2) : 2
+                      x: root.draftShowManga ? (parent.width - width - 2) : 2
                       Behavior on x { NumberAnimation { duration: 120 } }
                     }
                   }
@@ -1786,7 +1830,7 @@ Item {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (host && host.updateSetting) host.updateSetting("showManga", !root.showManga)
+                    root.draftShowManga = !root.draftShowManga
                   }
                 }
               }
@@ -1810,7 +1854,7 @@ Item {
                 height: Style.space(36)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
-                border.color: root.notifyOnRelease ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
+                border.color: root.draftNotifyOnRelease ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
                 border.width: 1
 
                 RowLayout {
@@ -1818,22 +1862,22 @@ Item {
                   anchors.margins: Style.space(7)
                   spacing: Style.space(6)
 
-                  Text { text: "󰿎"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.notifyOnRelease ? colAccent : colDim }
+                  Text { text: "󰿎"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.draftNotifyOnRelease ? colAccent : colDim }
                   Text { Layout.fillWidth: true; text: "Episodes"; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; color: colForeground }
 
                   Rectangle {
                     width: Style.space(30)
                     height: Style.space(16)
                     radius: 8
-                    color: root.notifyOnRelease ? colAccent : Util.alpha(colForeground, 0.15)
+                    color: root.draftNotifyOnRelease ? colAccent : Util.alpha(colForeground, 0.15)
 
                     Rectangle {
                       width: Style.space(12)
                       height: Style.space(12)
                       radius: 6
-                      color: root.notifyOnRelease ? "#12131a" : colDim
+                      color: root.draftNotifyOnRelease ? "#12131a" : colDim
                       anchors.verticalCenter: parent.verticalCenter
-                      x: root.notifyOnRelease ? (parent.width - width - 2) : 2
+                      x: root.draftNotifyOnRelease ? (parent.width - width - 2) : 2
                       Behavior on x { NumberAnimation { duration: 120 } }
                     }
                   }
@@ -1843,7 +1887,7 @@ Item {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (host && host.updateSetting) host.updateSetting("notifyOnRelease", !root.notifyOnRelease)
+                    root.draftNotifyOnRelease = !root.draftNotifyOnRelease
                   }
                 }
               }
@@ -1855,7 +1899,7 @@ Item {
                 height: Style.space(36)
                 radius: Style.cornerRadius
                 color: Util.alpha(colForeground, 0.04)
-                border.color: root.notifyManga ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
+                border.color: root.draftNotifyManga ? Util.alpha(colAccent, 0.4) : Util.alpha(colBorder, 0.2)
                 border.width: 1
 
                 RowLayout {
@@ -1863,22 +1907,22 @@ Item {
                   anchors.margins: Style.space(7)
                   spacing: Style.space(6)
 
-                  Text { text: "󰂿"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.notifyManga ? colAccent : colDim }
+                  Text { text: "󰂿"; font.family: root.fontFamily; font.pixelSize: Style.font.bodySmall; color: root.draftNotifyManga ? colAccent : colDim }
                   Text { Layout.fillWidth: true; text: "Chapters"; font.family: root.fontFamily; font.pixelSize: Style.font.caption; font.bold: true; color: colForeground }
 
                   Rectangle {
                     width: Style.space(30)
                     height: Style.space(16)
                     radius: 8
-                    color: root.notifyManga ? colAccent : Util.alpha(colForeground, 0.15)
+                    color: root.draftNotifyManga ? colAccent : Util.alpha(colForeground, 0.15)
 
                     Rectangle {
                       width: Style.space(12)
                       height: Style.space(12)
                       radius: 6
-                      color: root.notifyManga ? "#12131a" : colDim
+                      color: root.draftNotifyManga ? "#12131a" : colDim
                       anchors.verticalCenter: parent.verticalCenter
-                      x: root.notifyManga ? (parent.width - width - 2) : 2
+                      x: root.draftNotifyManga ? (parent.width - width - 2) : 2
                       Behavior on x { NumberAnimation { duration: 120 } }
                     }
                   }
@@ -1888,7 +1932,7 @@ Item {
                   anchors.fill: parent
                   cursorShape: Qt.PointingHandCursor
                   onClicked: {
-                    if (host && host.updateSetting) host.updateSetting("notifyManga", !root.notifyManga)
+                    root.draftNotifyManga = !root.draftNotifyManga
                   }
                 }
               }
@@ -1942,11 +1986,11 @@ Item {
                     { id: "full", label: "Full" }
                   ]
 
-                  delegate: Rectangle {
+                    delegate: Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: Style.cornerRadius - 1
-                    color: (root.tickerMode === modelData.id) 
+                    color: (root.draftTickerMode === modelData.id) 
                       ? colAccent 
                       : (modeHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
 
@@ -1955,8 +1999,8 @@ Item {
                       text: modelData.label
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
-                      font.bold: (root.tickerMode === modelData.id)
-                      color: (root.tickerMode === modelData.id) ? "#12131a" : (modeHover.containsMouse ? colForeground : colDim)
+                      font.bold: (root.draftTickerMode === modelData.id)
+                      color: (root.draftTickerMode === modelData.id) ? "#12131a" : (modeHover.containsMouse ? colForeground : colDim)
                     }
 
                     MouseArea {
@@ -1965,7 +2009,7 @@ Item {
                       hoverEnabled: true
                       cursorShape: Qt.PointingHandCursor
                       onClicked: {
-                        if (host && host.updateSetting) host.updateSetting("tickerMode", modelData.id)
+                        root.draftTickerMode = modelData.id
                       }
                     }
                   }
@@ -1976,8 +2020,8 @@ Item {
             Text {
               Layout.fillWidth: true
               text: {
-                if (root.tickerMode === "icon") return "Shows only the plugin glyph (󰵪) on the top bar"
-                if (root.tickerMode === "time") return "Shows icon + time until next episode (e.g. 󰵪 in 2h)"
+                if (root.draftTickerMode === "icon") return "Shows only the plugin glyph (󰵪) on the top bar"
+                if (root.draftTickerMode === "time") return "Shows icon + time until next episode (e.g. 󰵪 in 2h)"
                 return "Shows icon + show name + countdown (e.g. 󰵪 One Piece Ep 1175 · in 2h)"
               }
               font.family: root.fontFamily
@@ -2039,7 +2083,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: Style.cornerRadius - 1
-                    color: (root.checkIntervalMins === modelData.val) 
+                    color: (root.draftCheckIntervalMins === modelData.val) 
                       ? colAccent 
                       : (intHover.containsMouse ? Util.alpha(colForeground, 0.08) : "transparent")
 
@@ -2048,8 +2092,8 @@ Item {
                       text: modelData.label
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.caption
-                      font.bold: (root.checkIntervalMins === modelData.val)
-                      color: (root.checkIntervalMins === modelData.val) ? "#12131a" : (intHover.containsMouse ? colForeground : colDim)
+                      font.bold: (root.draftCheckIntervalMins === modelData.val)
+                      color: (root.draftCheckIntervalMins === modelData.val) ? "#12131a" : (intHover.containsMouse ? colForeground : colDim)
                     }
 
                     MouseArea {
@@ -2058,7 +2102,7 @@ Item {
                       hoverEnabled: true
                       cursorShape: Qt.PointingHandCursor
                       onClicked: {
-                        if (host && host.updateSetting) host.updateSetting("checkIntervalMins", modelData.val)
+                        root.draftCheckIntervalMins = modelData.val
                       }
                     }
                   }
@@ -2098,6 +2142,13 @@ Item {
 
               onTextEdited: {
                 root.draftCustomBanner = text.trim()
+              }
+
+              Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Escape) {
+                  root.isSettingsOpen = false
+                  event.accepted = true
+                }
               }
             }
 
@@ -2194,9 +2245,27 @@ Item {
                 cursorShape: root.canSync ? Qt.PointingHandCursor : Qt.ArrowCursor
                 onClicked: {
                   if (root.canSync && host) {
-                    if (host.applyAccount) {
-                      host.applyAccount(root.draftProvider, root.draftUserName, root.draftCustomBanner)
+                    if (host.applySettings) {
+                      host.applySettings({
+                        showAnime: root.draftShowAnime,
+                        showManga: root.draftShowManga,
+                        notifyOnRelease: root.draftNotifyOnRelease,
+                        notifyManga: root.draftNotifyManga,
+                        tickerMode: root.draftTickerMode,
+                        checkIntervalMins: root.draftCheckIntervalMins
+                      })
                     }
+                    var accountChanged = (root.draftProvider !== root.provider) ||
+                                         (root.draftProvider !== "simkl" && root.draftUserName !== root.userName) ||
+                                         (root.draftCustomBanner !== root.customBanner)
+                    if (accountChanged) {
+                      if (host.applyAccount) {
+                        host.applyAccount(root.draftProvider, root.draftUserName, root.draftCustomBanner)
+                      }
+                    } else {
+                      if (host.sync) host.sync()
+                    }
+                    root.isSettingsOpen = false
                   }
                 }
               }

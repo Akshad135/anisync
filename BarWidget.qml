@@ -232,6 +232,20 @@ BarWidget {
     root.saveSettings()
   }
 
+  function applySettings(settingsObj) {
+    if (!settingsObj) return
+    if (settingsObj.showAnime !== undefined) root.showAnime = settingsObj.showAnime
+    if (settingsObj.showManga !== undefined) root.showManga = settingsObj.showManga
+    if (settingsObj.notifyOnRelease !== undefined) root.notifyOnRelease = settingsObj.notifyOnRelease
+    if (settingsObj.notifyManga !== undefined) root.notifyManga = settingsObj.notifyManga
+    if (settingsObj.checkIntervalMins !== undefined) root.checkIntervalMins = settingsObj.checkIntervalMins
+    if (settingsObj.tickerMode !== undefined) {
+      root.tickerMode = settingsObj.tickerMode
+      root.updateTicker()
+    }
+    root.saveSettings()
+  }
+
   // ------------------------------------------------------------- Cache Snapshot
   function hydrateFromCache(raw) {
     if (!root.ready && raw) {
@@ -417,12 +431,13 @@ BarWidget {
 
   Process {
     id: searchProc
+    property int searchGen: 0
     running: false
     command: []
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.onSearchFetched(String(text || "").trim())
+        root.onSearchFetched(String(text || "").trim(), searchProc.searchGen)
       }
     }
     onExited: function(exitCode) {
@@ -1139,7 +1154,11 @@ BarWidget {
   }
 
   function search(query) {
-    if (!query || query.trim().length === 0) return
+    if (!query || query.trim().length === 0) {
+      clearSearch()
+      return
+    }
+    searchProc.searchGen++
     root.isSearching = true
     var payload = Logic.buildAniListSearchQuery(query.trim())
     searchProc.exec([
@@ -1152,11 +1171,14 @@ BarWidget {
   }
 
   function clearSearch() {
+    searchProc.searchGen++
+    if (searchProc.running) searchProc.kill()
     root.searchResults = []
     root.isSearching = false
   }
 
-  function onSearchFetched(rawText) {
+  function onSearchFetched(rawText, reqGen) {
+    if (reqGen !== undefined && reqGen !== searchProc.searchGen) return
     root.isSearching = false
     if (!rawText) return
     root.searchResults = Logic.parseSearchResponse(rawText)
