@@ -763,7 +763,7 @@ function splitCurlHttpStatus(rawText) {
 var SIMKL_API_BASE = "https://api.simkl.com"
 var SIMKL_CALENDAR_URL = "https://data.simkl.in/calendar/anime.json"
 var SIMKL_APP_NAME = "anisync"
-var SIMKL_APP_VERSION = "1.2.1"
+var SIMKL_APP_VERSION = "1.2.2"
 
 // client_id / app-name / app-version are required URL parameters on every
 // Simkl request (see api.simkl.org/conventions/headers).
