@@ -1199,6 +1199,7 @@ BarWidget {
       "omarchy-notification-send",
       "-g", "󰵪",
       "-u", "normal",
+      "-t", "15000",
       "--app-name", "AniSync"
     ]
     if (drop.cover && String(drop.cover).indexOf("https://") === 0) {
@@ -1216,6 +1217,7 @@ BarWidget {
       "omarchy-notification-send",
       "-g", "󰵪",
       "-u", "normal",
+      "-t", "15000",
       "--app-name", "AniSync",
       "AniSync Connected!",
       "Notifications are active. You will receive alerts when new episodes air."
