@@ -59,6 +59,7 @@ BarWidget {
   property bool simklAnimeDone: false
   property bool simklShowsDone: false
   property bool simklCalendarDone: false
+  property bool simklTvCalendarDone: false
 
   property bool ready: false
   property bool settingsLoaded: false
@@ -304,6 +305,7 @@ BarWidget {
     root.simklAnimeDone = false
     root.simklShowsDone = false
     root.simklCalendarDone = false
+    root.simklTvCalendarDone = false
     root.userAvatar = ""
     root.aniAvatar = ""
     root.malAvatar = ""
@@ -407,6 +409,7 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.simklLinking) return
         var res = Logic.parseSimklPinStart(String(text || "").trim())
         if (!res.ok) {
           root.simklLinking = false
@@ -422,6 +425,7 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (!root.simklLinking) return
       if (exitCode !== 0 && !root.simklUserCode) {
         root.simklLinking = false
         if (!root.syncError) root.syncError = "Failed to connect to Simkl API"
@@ -436,6 +440,7 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
+        if (!root.simklLinking || !root.simklUserCode) return
         var res = Logic.parseSimklPinPoll(String(text || "").trim())
         if (res.state === "authorized") {
           pinPollTimer.stop()
@@ -546,12 +551,15 @@ BarWidget {
       onStreamFinished: {
         if (root.simklGen !== root.syncGen) return
         root.mergeSimklCalendar(String(text || "").trim())
+        root.simklTvCalendarDone = true
+        root.tryFinalizeSimkl()
       }
     }
     onExited: function(exitCode) {
-      // Only the anime calendar's done-flag gates the pipeline; the TV file
-      // just enriches whatever it managed to fetch.
-      if (root.simklGen === root.syncGen && !root.simklAnimeDone) return
+      if (!root.simklTvCalendarDone) {
+        root.simklTvCalendarDone = true
+        root.tryFinalizeSimkl()
+      }
     }
   }
 
@@ -615,6 +623,8 @@ BarWidget {
   // Aborts an in-flight PIN link with an optional user-facing message.
   function stopSimklLink(message) {
     pinPollTimer.stop()
+    if (simklPinStartProc.running) simklPinStartProc.kill()
+    if (simklPinPollProc.running) simklPinPollProc.kill()
     root.simklUserCode = ""
     root.simklPinExpiresAt = 0
     root.simklLinking = false
@@ -623,13 +633,27 @@ BarWidget {
 
   function unlinkSimkl(message) {
     pinPollTimer.stop()
+    if (simklPinStartProc.running) simklPinStartProc.kill()
+    if (simklPinPollProc.running) simklPinPollProc.kill()
+    if (simklFetchProc.running) simklFetchProc.kill()
+    if (simklShowsFetchProc.running) simklShowsFetchProc.kill()
+    if (simklCalendarProc.running) simklCalendarProc.kill()
+    if (simklTvCalendarProc.running) simklTvCalendarProc.kill()
+    if (simklProfileProc.running) simklProfileProc.kill()
     root.simklToken = ""
     root.simklUserCode = ""
     root.simklPinExpiresAt = 0
     root.simklLinking = false
+    root.userName = ""
+    root.userAvatar = ""
     root.saveSettings()
-    root.resetAccount()
-    if (message) root.syncError = message
+    if (message) {
+      root.isFetching = false
+      root.syncError = message
+      root.updateTicker()
+    } else {
+      root.resetAccount()
+    }
   }
 
   function openUrl(url) {
@@ -722,6 +746,7 @@ BarWidget {
       simklAnimeDone = false
       simklShowsDone = false
       simklCalendarDone = false
+      simklTvCalendarDone = false
       simklCalendarMap = {}
       pendingSimklRaw = ""
       pendingSimklShowsRaw = ""
@@ -977,7 +1002,8 @@ BarWidget {
 
   function tryFinalizeSimkl() {
     if (root.simklGen !== root.syncGen) return
-    if (!simklAnimeDone || !simklShowsDone || !simklCalendarDone) return
+    if (!root.simklToken) return
+    if (!simklAnimeDone || !simklShowsDone || !simklCalendarDone || !simklTvCalendarDone) return
 
     var animeRaw = root.pendingSimklRaw
     var showsRaw = root.pendingSimklShowsRaw
@@ -992,8 +1018,8 @@ BarWidget {
 
     // Single parse pass with the full calendars available — schedules
     // resolve correctly regardless of which fetch landed first.
-    var animeParsed = animeRaw ? Logic.parseSimklResponse(animeRaw, root.seenDrops, root.simklCalendarMap, "anime") : null
-    var showsParsed = showsRaw ? Logic.parseSimklResponse(showsRaw, root.seenDrops, root.simklCalendarMap, "shows") : null
+    var animeParsed = animeRaw ? Logic.parseSimklResponse(animeRaw, null, root.simklCalendarMap, "anime") : null
+    var showsParsed = showsRaw ? Logic.parseSimklResponse(showsRaw, null, root.simklCalendarMap, "shows") : null
 
     if (animeParsed && animeParsed.error) animeParsed = null
     if (showsParsed && showsParsed.error) showsParsed = null
@@ -1003,19 +1029,14 @@ BarWidget {
       return
     }
 
-    // One shared tracker across both lists so a show switching category
-    // (anime <-> TVDB mapping edge) still detects episode transitions.
-    var tracker = root.seenDrops
     var combined = []
     var upcoming = []
 
     if (animeParsed) {
-      tracker = animeParsed.updatedTrackerState || tracker
       combined = combined.concat(animeParsed.watchingAnime)
       upcoming = upcoming.concat(animeParsed.upcomingAnime)
     }
     if (showsParsed) {
-      tracker = Logic.detectDrops(combined.concat(showsParsed.watchingAnime), tracker).updatedTrackerState
       combined = combined.concat(showsParsed.watchingAnime)
       upcoming = upcoming.concat(showsParsed.upcomingAnime)
     }
@@ -1037,14 +1058,10 @@ BarWidget {
     root.watchingList = combined
     root.readingManga = []
     root.upcomingList = upcoming
-    root.seenDrops = tracker
 
-    // Both parses already ran detectDrops against the incoming tracker, so
-    // their newDrops arrays are disjoint and can be merged as-is.
-    var allNewDrops = []
-      .concat(animeParsed && animeParsed.newDrops ? animeParsed.newDrops : [])
-      .concat(showsParsed && showsParsed.newDrops ? showsParsed.newDrops : [])
-    root.notifyNewDrops(allNewDrops)
+    var drops = Logic.detectDrops(combined, root.seenDrops)
+    root.seenDrops = drops.updatedTrackerState
+    root.notifyNewDrops(drops.newDrops)
     root.finalizeSync()
   }
 

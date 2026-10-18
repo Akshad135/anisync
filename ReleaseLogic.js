@@ -685,12 +685,20 @@ function parseMALUserAvatar(html) {
 function splitCurlHttpStatus(rawText) {
   var out = { status: "", body: rawText || "" }
   if (!rawText) return out
-  var idx = String(rawText).lastIndexOf("\n")
-  if (idx < 0) return out
-  var code = String(rawText).substring(idx + 1).trim()
+  var str = String(rawText)
+  var idx = str.lastIndexOf("\n")
+  if (idx < 0) {
+    var trimmed = str.trim()
+    if (/^\d{3}$/.test(trimmed)) {
+      out.status = trimmed
+      out.body = ""
+    }
+    return out
+  }
+  var code = str.substring(idx + 1).trim()
   if (/^\d{3}$/.test(code)) {
     out.status = code
-    out.body = String(rawText).substring(0, idx)
+    out.body = str.substring(0, idx)
   }
   return out
 }

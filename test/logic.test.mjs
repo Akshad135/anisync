@@ -324,6 +324,31 @@ test("parseSimklUserProfile reads name, avatar, and plan type", () => {
   assert.equal(Logic.parseSimklUserProfile(null).error, "No response from Simkl")
 })
 
+test("splitCurlHttpStatus parses body and trailing status code or standalone status", () => {
+  const withBody = Logic.splitCurlHttpStatus('{"anime":[]}\n200')
+  assert.equal(withBody.status, "200")
+  assert.equal(withBody.body, '{"anime":[]}')
+
+  const newlineOnlyStatus = Logic.splitCurlHttpStatus("\n401")
+  assert.equal(newlineOnlyStatus.status, "401")
+  assert.equal(newlineOnlyStatus.body, "")
+
+  const standaloneStatus = Logic.splitCurlHttpStatus("403")
+  assert.equal(standaloneStatus.status, "403")
+  assert.equal(standaloneStatus.body, "")
+
+  const networkError = Logic.splitCurlHttpStatus("\n000")
+  assert.equal(networkError.status, "000")
+  assert.equal(networkError.body, "")
+
+  const noStatus = Logic.splitCurlHttpStatus("Just a plain body")
+  assert.equal(noStatus.status, "")
+  assert.equal(noStatus.body, "Just a plain body")
+
+  assert.equal(Logic.splitCurlHttpStatus("").status, "")
+  assert.equal(Logic.splitCurlHttpStatus(null).status, "")
+})
+
 test("buildSimklListUrl targets anime and shows watching endpoints", () => {
   const animeUrl = Logic.buildSimklListUrl("anime", "abc123")
   assert.ok(animeUrl.startsWith("https://api.simkl.com/sync/all-items/anime/watching?"))
