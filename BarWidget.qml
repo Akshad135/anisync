@@ -330,6 +330,9 @@ BarWidget {
     }
     onExited: function(exitCode) {
       root.isFetching = false
+      if (exitCode !== 0 && !root.syncError) {
+        root.syncError = "AniList API is down or unreachable"
+      }
     }
   }
 
@@ -343,6 +346,15 @@ BarWidget {
         root.onMALFetched(String(text || "").trim())
       }
     }
+    onExited: function(exitCode) {
+      if (root.malGen === root.syncGen && root.pendingMALAnime === null) {
+        if (exitCode !== 0 && !root.syncError) {
+          root.syncError = "MyAnimeList is down or unreachable"
+        }
+        root.pendingMALAnime = false
+        root.tryFinalizeMAL()
+      }
+    }
   }
 
   Process {
@@ -353,6 +365,12 @@ BarWidget {
       waitForEnd: true
       onStreamFinished: {
         root.onMALMangaFetched(String(text || "").trim())
+      }
+    }
+    onExited: function(exitCode) {
+      if (root.malGen === root.syncGen && root.pendingMALManga === null) {
+        root.pendingMALManga = false
+        root.tryFinalizeMAL()
       }
     }
   }
@@ -382,6 +400,17 @@ BarWidget {
       waitForEnd: true
       onStreamFinished: {
         root.onEnrichFetched(String(text || "").trim())
+      }
+    }
+    onExited: function(exitCode) {
+      if (root.malGen === root.syncGen && root.pendingEnrichTarget) {
+        if (exitCode !== 0 && !root.syncError) {
+          root.syncError = "AniList API is down or unreachable"
+        }
+        var target = root.pendingEnrichTarget
+        root.pendingEnrichTarget = null
+        root.enrichQueue = []
+        if (target) root.finishMALSync(target.anime, target.manga)
       }
     }
   }
@@ -592,6 +621,15 @@ BarWidget {
         root.onSimklFetched(String(text || "").trim())
       }
     }
+    onExited: function(exitCode) {
+      if (root.simklGen === root.syncGen && !root.simklAnimeDone) {
+        if (exitCode !== 0 && !root.syncError) {
+          root.syncError = "Simkl API is down or unreachable"
+        }
+        root.simklAnimeDone = true
+        root.tryFinalizeSimkl()
+      }
+    }
   }
 
   Process {
@@ -602,6 +640,15 @@ BarWidget {
       waitForEnd: true
       onStreamFinished: {
         root.onSimklShowsFetched(String(text || "").trim())
+      }
+    }
+    onExited: function(exitCode) {
+      if (root.simklGen === root.syncGen && !root.simklShowsDone) {
+        if (exitCode !== 0 && !root.syncError) {
+          root.syncError = "Simkl API is down or unreachable"
+        }
+        root.simklShowsDone = true
+        root.tryFinalizeSimkl()
       }
     }
   }
@@ -817,7 +864,7 @@ BarWidget {
     if (root.aniListGen !== root.syncGen) return
     root.isFetching = false
     if (!rawText) {
-      root.syncError = "No response from AniList"
+      if (!root.syncError) root.syncError = "AniList API is down or unreachable"
       return
     }
 
@@ -847,6 +894,7 @@ BarWidget {
   function onMALFetched(rawText) {
     if (root.malGen !== root.syncGen) return
     if (!rawText) {
+      if (!root.syncError) root.syncError = "MyAnimeList is down or unreachable"
       root.pendingMALAnime = false
       root.tryFinalizeMAL()
       return
@@ -923,14 +971,15 @@ BarWidget {
 
   function onEnrichFetched(rawText) {
     if (root.malGen !== root.syncGen) return
-    // Enrichment failure is non-fatal (lists are still fresh), but surface it
-    // instead of pretending the cycle fully succeeded.
     if (!rawText && !root.syncError) {
       root.syncError = "Could not reach AniList for airing schedules"
     }
     var map = Logic.parseEnrichResponse(rawText)
+    if (map.error && !root.syncError) {
+      root.syncError = map.error
+    }
     for (var k in map) {
-      if (Object.prototype.hasOwnProperty.call(map, k)) {
+      if (k !== "error" && Object.prototype.hasOwnProperty.call(map, k)) {
         root.enrichMap[k] = map[k]
       }
     }
@@ -945,23 +994,28 @@ BarWidget {
   }
 
   function finishMALSync(animeList, mangaList) {
-    // Any provider fetch failed this cycle: keep the previous lists and
+    // Both provider fetches failed this cycle: keep the previous lists and
     // tracker untouched (no prune, no success timestamp, no cache write).
-    if (root.pendingMALAnime === false || root.pendingMALManga === false) {
+    if (root.pendingMALAnime === false && root.pendingMALManga === false) {
       root.isFetching = false
       root.updateTicker()
       return
     }
 
-    var res = Logic.applyEnrichment(animeList, root.enrichMap)
-    root.watchingList = res.anime
-    root.upcomingList = res.upcoming
-    root.readingManga = mangaList
+    if (root.pendingMALAnime !== false) {
+      var res = Logic.applyEnrichment(animeList, root.enrichMap)
+      root.watchingList = res.anime
+      root.upcomingList = res.upcoming
 
-    var drops = Logic.detectDrops(res.anime, root.seenDrops)
-    root.seenDrops = drops.updatedTrackerState
+      var drops = Logic.detectDrops(res.anime, root.seenDrops)
+      root.seenDrops = drops.updatedTrackerState
+      root.notifyNewDrops(drops.newDrops)
+    }
 
-    root.notifyNewDrops(drops.newDrops)
+    if (root.pendingMALManga !== false) {
+      root.readingManga = mangaList
+    }
+
     root.finalizeSync()
   }
 
@@ -983,6 +1037,12 @@ BarWidget {
       return
     }
 
+    if (split.status === "429") {
+      if (!root.syncError) root.syncError = "Simkl rate limit reached — retry shortly"
+    } else if (split.status && split.status.indexOf("5") === 0) {
+      if (!root.syncError) root.syncError = "Simkl API is down or unreachable"
+    }
+
     root.pendingSimklRaw = split.body || ""
     simklAnimeDone = true
     tryFinalizeSimkl()
@@ -995,6 +1055,13 @@ BarWidget {
       unlinkSimkl("Simkl connection revoked — reconnect your account")
       return
     }
+
+    if (split.status === "429") {
+      if (!root.syncError) root.syncError = "Simkl rate limit reached — retry shortly"
+    } else if (split.status && split.status.indexOf("5") === 0) {
+      if (!root.syncError) root.syncError = "Simkl API is down or unreachable"
+    }
+
     root.pendingSimklShowsRaw = split.body || ""
     simklShowsDone = true
     tryFinalizeSimkl()
@@ -1012,7 +1079,7 @@ BarWidget {
 
     // Both list fetches failed (network etc.): keep cached lists visible.
     if (!animeRaw && !showsRaw) {
-      finalizeSimklFailure("No response from Simkl")
+      finalizeSimklFailure(root.syncError || "Simkl API is down or unreachable")
       return
     }
 

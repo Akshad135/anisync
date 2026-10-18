@@ -176,17 +176,28 @@ function parseAniListResponse(rawJson, trackerState) {
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
-    result.error = "Invalid AniList response format"
+    var rawStr = String(rawJson || "").toLowerCase()
+    if (rawStr.indexOf("too many requests") !== -1 || rawStr.indexOf("rate limit") !== -1) {
+      result.error = "AniList rate limit reached — retry shortly"
+    } else if (rawStr.indexOf("502") !== -1 || rawStr.indexOf("503") !== -1 || rawStr.indexOf("504") !== -1 || rawStr.indexOf("cloudflare") !== -1) {
+      result.error = "AniList API is down or unreachable"
+    } else {
+      result.error = "Invalid AniList response format"
+    }
     return result
   }
 
   if (data.errors && data.errors.length > 0) {
     var firstErr = data.errors[0]
     var msg = String(firstErr.message || "").toLowerCase()
-    if (firstErr.status === 404 || msg.indexOf("not found") !== -1) {
+    if (firstErr.status === 429 || msg.indexOf("too many requests") !== -1 || msg.indexOf("rate limit") !== -1) {
+      result.error = "AniList rate limit reached — retry shortly"
+    } else if (firstErr.status === 404 || msg.indexOf("not found") !== -1) {
       result.error = "User not found on AniList"
     } else if (msg.indexOf("private") !== -1) {
       result.error = "AniList profile or list is private"
+    } else if (firstErr.status >= 500 || msg.indexOf("internal server error") !== -1 || msg.indexOf("service unavailable") !== -1) {
+      result.error = "AniList API is down or unreachable"
     } else {
       result.error = firstErr.message || "AniList API error"
     }
@@ -480,10 +491,27 @@ function parseEnrichResponse(rawJson) {
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
+    var rawStr = String(rawJson || "").toLowerCase()
+    if (rawStr.indexOf("too many requests") !== -1 || rawStr.indexOf("rate limit") !== -1) {
+      map.error = "AniList rate limit reached — retry shortly"
+    } else if (rawStr.indexOf("502") !== -1 || rawStr.indexOf("503") !== -1 || rawStr.indexOf("504") !== -1 || rawStr.indexOf("cloudflare") !== -1) {
+      map.error = "AniList API is down or unreachable"
+    }
     return map
   }
 
-  if (!data || (data.errors && data.errors.length > 0)) return map
+  if (!data) return map
+
+  if (data.errors && data.errors.length > 0) {
+    var firstErr = data.errors[0]
+    var msg = String(firstErr.message || "").toLowerCase()
+    if (firstErr.status === 429 || msg.indexOf("too many requests") !== -1 || msg.indexOf("rate limit") !== -1) {
+      map.error = "AniList rate limit reached — retry shortly"
+    } else if (firstErr.status >= 500 || msg.indexOf("internal server error") !== -1 || msg.indexOf("service unavailable") !== -1) {
+      map.error = "AniList API is down or unreachable"
+    }
+    return map
+  }
 
   var mediaList = (data.data && data.data.Page && data.data.Page.media) || []
   for (var i = 0; i < mediaList.length; i++) {
@@ -564,18 +592,30 @@ function parseMALListResponse(rawJson) {
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
-    list.error = "Invalid MAL response format"
+    var rawStr = String(rawJson || "").toLowerCase()
+    if (rawStr.indexOf("too many requests") !== -1 || rawStr.indexOf("rate limit") !== -1) {
+      list.error = "MyAnimeList rate limit reached — retry shortly"
+    } else if (rawStr.indexOf("502") !== -1 || rawStr.indexOf("503") !== -1 || rawStr.indexOf("504") !== -1 || rawStr.indexOf("cloudflare") !== -1) {
+      list.error = "MyAnimeList is down or unreachable"
+    } else {
+      list.error = "Invalid MAL response format"
+    }
     return list
   }
 
   if (data && data.errors && data.errors.length > 0) {
-    var msg = String(data.errors[0].message || "").toLowerCase()
-    if (msg.indexOf("private") !== -1) {
+    var firstErr = data.errors[0]
+    var msg = String(firstErr.message || "").toLowerCase()
+    if (firstErr.status === 429 || msg.indexOf("too many requests") !== -1 || msg.indexOf("rate limit") !== -1) {
+      list.error = "MyAnimeList rate limit reached — retry shortly"
+    } else if (msg.indexOf("private") !== -1) {
       list.error = "MAL watchlist is private"
     } else if (msg.indexOf("invalid") !== -1 || msg.indexOf("not found") !== -1) {
       list.error = "User not found on MyAnimeList"
+    } else if (firstErr.status >= 500) {
+      list.error = "MyAnimeList is down or unreachable"
     } else {
-      list.error = data.errors[0].message || "MyAnimeList error"
+      list.error = firstErr.message || "MyAnimeList error"
     }
     return list
   }
@@ -624,18 +664,30 @@ function parseMALMangaResponse(rawJson) {
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
-    list.error = "Invalid MAL response format"
+    var rawStr = String(rawJson || "").toLowerCase()
+    if (rawStr.indexOf("too many requests") !== -1 || rawStr.indexOf("rate limit") !== -1) {
+      list.error = "MyAnimeList rate limit reached — retry shortly"
+    } else if (rawStr.indexOf("502") !== -1 || rawStr.indexOf("503") !== -1 || rawStr.indexOf("504") !== -1 || rawStr.indexOf("cloudflare") !== -1) {
+      list.error = "MyAnimeList is down or unreachable"
+    } else {
+      list.error = "Invalid MAL response format"
+    }
     return list
   }
 
   if (data && data.errors && data.errors.length > 0) {
-    var msg = String(data.errors[0].message || "").toLowerCase()
-    if (msg.indexOf("private") !== -1) {
+    var firstErr = data.errors[0]
+    var msg = String(firstErr.message || "").toLowerCase()
+    if (firstErr.status === 429 || msg.indexOf("too many requests") !== -1 || msg.indexOf("rate limit") !== -1) {
+      list.error = "MyAnimeList rate limit reached — retry shortly"
+    } else if (msg.indexOf("private") !== -1) {
       list.error = "MAL manga list is private"
     } else if (msg.indexOf("invalid") !== -1 || msg.indexOf("not found") !== -1) {
       list.error = "User not found on MyAnimeList"
+    } else if (firstErr.status >= 500) {
+      list.error = "MyAnimeList is down or unreachable"
     } else {
-      list.error = data.errors[0].message || "MyAnimeList error"
+      list.error = firstErr.message || "MyAnimeList error"
     }
     return list
   }
@@ -921,14 +973,27 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
   try {
     data = typeof rawJson === "string" ? JSON.parse(rawJson) : rawJson
   } catch (e) {
-    data = null
+    var rawStr = String(rawJson || "").toLowerCase()
+    if (rawStr.indexOf("too many requests") !== -1 || rawStr.indexOf("rate limit") !== -1) {
+      result.error = "Simkl rate limit reached — retry shortly"
+    } else if (rawStr.indexOf("502") !== -1 || rawStr.indexOf("503") !== -1 || rawStr.indexOf("504") !== -1 || rawStr.indexOf("cloudflare") !== -1) {
+      result.error = "Simkl API is down or unreachable"
+    } else {
+      result.error = "Invalid Simkl response format"
+    }
+    return result
   }
   if (!data) {
     result.error = "Invalid Simkl response format"
     return result
   }
   if (data.error) {
-    result.error = data.error_message || "Simkl API error"
+    var sMsg = String(data.error_message || data.error || "").toLowerCase()
+    if (sMsg.indexOf("rate limit") !== -1 || sMsg.indexOf("too many requests") !== -1) {
+      result.error = "Simkl rate limit reached — retry shortly"
+    } else {
+      result.error = data.error_message || "Simkl API error"
+    }
     return result
   }
 

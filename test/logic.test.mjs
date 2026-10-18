@@ -258,6 +258,39 @@ test("parseMALListResponse handles non-existent and private MAL users gracefully
   assert.equal(res2.error, "MAL watchlist is private")
 })
 
+test("rate-limit and API downtime detection across AniList, MAL, and Simkl", () => {
+  // AniList 429 and 500
+  const anilistRateLimit = Logic.parseAniListResponse({ errors: [{ message: "Too Many Requests.", status: 429 }] }, {})
+  assert.equal(anilistRateLimit.error, "AniList rate limit reached — retry shortly")
+
+  const anilistDown = Logic.parseAniListResponse("<html><body>502 Bad Gateway</body></html>", {})
+  assert.equal(anilistDown.error, "AniList API is down or unreachable")
+
+  // MAL 429 and 500
+  const malRateLimit = Logic.parseMALListResponse("Too Many Requests")
+  assert.equal(malRateLimit.error, "MyAnimeList rate limit reached — retry shortly")
+
+  const malDown = Logic.parseMALListResponse("503 Service Unavailable")
+  assert.equal(malDown.error, "MyAnimeList is down or unreachable")
+
+  const malMangaDown = Logic.parseMALMangaResponse("504 Gateway Time-out")
+  assert.equal(malMangaDown.error, "MyAnimeList is down or unreachable")
+
+  // AniList MAL enrichment 429 and downtime
+  const enrichRateLimit = Logic.parseEnrichResponse({ errors: [{ message: "Too Many Requests.", status: 429 }] })
+  assert.equal(enrichRateLimit.error, "AniList rate limit reached — retry shortly")
+
+  const enrichDown = Logic.parseEnrichResponse("502 Bad Gateway")
+  assert.equal(enrichDown.error, "AniList API is down or unreachable")
+
+  // Simkl 429 and downtime
+  const simklRateLimit = Logic.parseSimklResponse('{"error": true, "error_message": "Rate limit exceeded"}', {})
+  assert.equal(simklRateLimit.error, "Simkl rate limit reached — retry shortly")
+
+  const simklDown = Logic.parseSimklResponse("503 Service Temporarily Unavailable", {})
+  assert.equal(simklDown.error, "Simkl API is down or unreachable")
+})
+
 // ----------------------------------------------------------- Simkl
 
 test("buildSimklPinStartUrl and buildSimklPinPollUrl carry required app params", () => {
