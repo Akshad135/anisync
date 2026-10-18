@@ -1097,10 +1097,10 @@ BarWidget {
     if (drop.cover && String(drop.cover).indexOf("https://") === 0) {
       cmd.push("--image", String(drop.cover))
     }
-    if (drop.siteUrl && String(drop.siteUrl).indexOf("https://") === 0) {
-      cmd.push("--exec", "xdg-open '" + String(drop.siteUrl).replace(/'/g, "'\\''") + "'")
-    }
     cmd.push(title, desc)
+    if (drop.siteUrl && (String(drop.siteUrl).indexOf("https://") === 0 || String(drop.siteUrl).indexOf("http://") === 0)) {
+      cmd.push("--exec", "xdg-open", String(drop.siteUrl))
+    }
     Quickshell.execDetached(cmd)
   }
 
