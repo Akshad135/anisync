@@ -344,7 +344,9 @@ BarWidget {
     }
     onExited: function(exitCode) {
       root.isFetching = false
-      if (exitCode !== 0 && !root.syncError) {
+      if (exitCode === 63) {
+        root.syncError = "AniList response exceeded size limit"
+      } else if (exitCode !== 0 && !root.syncError) {
         root.syncError = "AniList API is down or unreachable"
       }
     }
@@ -361,6 +363,9 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (exitCode === 63) {
+        root.syncError = "MyAnimeList response exceeded size limit"
+      }
       if (root.malGen === root.syncGen && root.pendingMALAnime === null) {
         if (exitCode !== 0 && !root.syncError) {
           root.syncError = "MyAnimeList is down or unreachable"
@@ -382,6 +387,9 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (exitCode === 63) {
+        root.syncError = "MyAnimeList response exceeded size limit"
+      }
       if (root.malGen === root.syncGen && root.pendingMALManga === null) {
         root.pendingMALManga = false
         root.tryFinalizeMAL()
@@ -417,6 +425,9 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (exitCode === 63) {
+        root.syncError = "AniList response exceeded size limit"
+      }
       if (exitCode !== 0 && root.malGen === root.syncGen && root.pendingEnrichTarget) {
         if (!root.syncError) {
           root.syncError = "AniList API is down or unreachable"
@@ -470,6 +481,11 @@ BarWidget {
     }
     onExited: function(exitCode) {
       if (!root.simklLinking) return
+      if (exitCode === 63) {
+        root.simklLinking = false
+        root.syncError = "Simkl response exceeded size limit"
+        return
+      }
       if (exitCode !== 0 && !root.simklUserCode) {
         root.simklLinking = false
         if (!root.syncError) root.syncError = "Failed to connect to Simkl API"
@@ -536,6 +552,7 @@ BarWidget {
       if (!root.simklUserCode || !root.simklClientId) return
       simklPinPollProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "10",
+        "--max-filesize", "1M",
         Logic.buildSimklPinPollUrl(root.simklUserCode, root.simklClientId)
       ])
     }
@@ -637,6 +654,9 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (exitCode === 63) {
+        root.syncError = "Simkl response exceeded size limit"
+      }
       if (root.simklGen === root.syncGen && !root.simklAnimeDone) {
         if (exitCode !== 0 && !root.syncError) {
           root.syncError = "Simkl API is down or unreachable"
@@ -658,6 +678,9 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (exitCode === 63) {
+        root.syncError = "Simkl response exceeded size limit"
+      }
       if (root.simklGen === root.syncGen && !root.simklShowsDone) {
         if (exitCode !== 0 && !root.syncError) {
           root.syncError = "Simkl API is down or unreachable"
@@ -678,6 +701,7 @@ BarWidget {
     root.simklLinking = true
     simklPinStartProc.exec([
       "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+      "--max-filesize", "1M",
       Logic.buildSimklPinStartUrl(root.simklClientId)
     ])
   }
@@ -794,6 +818,7 @@ BarWidget {
       // command= + running=true would silently no-op on a live process
       aniListFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "10M",
         "-X", "POST", "https://graphql.anilist.co",
         "-H", "Content-Type: application/json",
         "-H", "User-Agent: OmarchyAniSync/1.0",
@@ -817,6 +842,7 @@ BarWidget {
       // but these are three distinct requests at a 30-min cadence.
       simklFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "10M",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-H", "simkl-api-key: " + root.simklClientId,
         "-H", simklAuthHeader(root.simklToken),
@@ -825,6 +851,7 @@ BarWidget {
       ])
       simklShowsFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "10M",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-H", "simkl-api-key: " + root.simklClientId,
         "-H", simklAuthHeader(root.simklToken),
@@ -833,18 +860,21 @@ BarWidget {
       ])
       simklCalendarProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "10M",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         Logic.buildSimklCalendarUrl()
       ])
       // TV calendar is a second public CDN file, not a token-scoped call.
       simklTvCalendarProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "15M",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         Logic.buildSimklTvCalendarUrl()
       ])
       // Profile refresh is opportunistic (name/avatar may have changed).
       simklProfileProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "1M",
         "-X", "POST",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-H", "Content-Type: application/json",
@@ -857,18 +887,21 @@ BarWidget {
       root.malGen = root.syncGen
       malFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "10M",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/animelist/" + encodeURIComponent(root.userName) + "/load.json?status=1"
       ])
 
       malMangaFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "10M",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/mangalist/" + encodeURIComponent(root.userName) + "/load.json?status=1"
       ])
 
       malAvatarFetchProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+        "--max-filesize", "2M",
         "-A", "Mozilla/5.0 (X11; Linux x86_64)",
         "https://myanimelist.net/profile/" + encodeURIComponent(root.userName)
       ])
@@ -977,6 +1010,7 @@ BarWidget {
     var chunk = root.enrichQueue[0]
     enrichProc.exec([
       "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+      "--max-filesize", "2M",
       "-X", "POST", "https://graphql.anilist.co",
       "-H", "Content-Type: application/json",
       "-H", "User-Agent: OmarchyAniSync/1.0",
@@ -1163,6 +1197,7 @@ BarWidget {
     var payload = Logic.buildAniListSearchQuery(query.trim())
     searchProc.exec([
       "curl", "-fsS", "--proto", "=https", "--max-time", "10",
+      "--max-filesize", "2M",
       "-X", "POST", "https://graphql.anilist.co",
       "-H", "Content-Type: application/json",
       "-H", "User-Agent: OmarchyAniSync/1.0",

@@ -90,7 +90,7 @@ omarchy plugin remove akshad135.anisync
 
 ## Architecture & Security
 
-- **Network Services:** Queries public HTTPS endpoints on AniList (`https://graphql.anilist.co`), MyAnimeList (`https://myanimelist.net/`), and Simkl (`https://api.simkl.com`, plus the public `https://data.simkl.in` calendar) with strict `--proto =https` protocol enforcement and `--max-time` limits.
+- **Network Services:** Queries public HTTPS endpoints on AniList (`https://graphql.anilist.co`), MyAnimeList (`https://myanimelist.net/`), and Simkl (`https://api.simkl.com`, plus the public `https://data.simkl.in` calendar) with strict `--proto =https` protocol enforcement, `--max-time` deadlines, and `--max-filesize` response-byte limits to prevent memory exhaustion in the shared shell process.
 - **Credentials:** AniList and MAL require no tokens or secrets. Simkl uses a per-user OAuth access token obtained through the device PIN flow — no password or client secret is ever entered or stored beyond the token itself, which lives in the plugin's local state directory. Revoke it anytime from [Simkl Connected Apps](https://simkl.com/settings/connected-apps/).
 - **Safe Execution:** All background child processes use structured argument arrays via Quickshell `Process` without shell string interpolation.
 - **Privilege Boundary:** Runs entirely as an unprivileged user process without elevated permissions or background daemons.
