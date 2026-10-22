@@ -106,13 +106,23 @@ BarWidget {
   readonly property string cacheFilePath: stateDir + "/cache.json"
 
   // ------------------------------------------------------------- State Persistence
+  // stateDir holds the Simkl token; keep it owner-only. The default umask (022)
+  // would otherwise leave the directory world-readable.
   Process {
     id: ensureDirProc
-    command: ["mkdir", "-p", root.stateDir]
+    command: ["sh", "-c",
+      "umask 077; mkdir -p \"$1\" || exit 1; chmod 700 \"$1\" || exit 1; " +
+      "[ ! -e \"$1/settings.json\" ] || chmod 600 \"$1/settings.json\" || exit 1",
+      "anisync-state", root.stateDir]
     onExited: function(code) {
       settingsFile.reload()
       cacheFile.reload()
     }
+  }
+
+  Process {
+    id: lockStateProc
+    command: ["chmod", "600", root.settingsFilePath]
   }
 
   FileView {
@@ -120,6 +130,12 @@ BarWidget {
     path: root.settingsFilePath
     watchChanges: true
     printErrors: false
+    // Another bar instance (one per monitor) may rewrite the file; converge on
+    // it so a token cleared by one instance is not resurrected by another.
+    onFileChanged: reload()
+    // FileView writes atomically; chmod only after the rename has landed,
+    // otherwise the chmod can hit the old inode.
+    onSaved: lockStateProc.exec(["chmod", "600", root.settingsFilePath])
     onLoaded: {
       root.loadSettings(text())
       root.markSettingsLoaded()
@@ -448,11 +464,18 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
-        root.onSearchFetched(String(text || "").trim(), searchProc.searchGen)
+        var str = String(text || "")
+        var nl = str.indexOf("\n")
+        if (nl < 0) return
+        var respGen = parseInt(str.substring(0, nl), 10)
+        var body = str.substring(nl + 1).trim()
+        root.onSearchFetched(body, respGen)
       }
     }
     onExited: function(exitCode) {
-      root.isSearching = false
+      if (!searchProc.running) {
+        root.isSearching = false
+      }
     }
   }
 
@@ -562,6 +585,8 @@ BarWidget {
     id: simklProfileProc
     running: false
     command: []
+    stdinEnabled: true
+    onStarted: root.writeSimklToken(simklProfileProc)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -647,6 +672,8 @@ BarWidget {
     id: simklFetchProc
     running: false
     command: []
+    stdinEnabled: true
+    onStarted: root.writeSimklToken(simklFetchProc)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -654,13 +681,13 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (root.simklGen !== root.syncGen) return
       if (exitCode === 63) {
         root.syncError = "Simkl response exceeded size limit"
+      } else if (exitCode !== 0 && !root.syncError) {
+        root.syncError = "Simkl API is down or unreachable"
       }
-      if (root.simklGen === root.syncGen && !root.simklAnimeDone) {
-        if (exitCode !== 0 && !root.syncError) {
-          root.syncError = "Simkl API is down or unreachable"
-        }
+      if (!root.simklAnimeDone) {
         root.simklAnimeDone = true
         root.tryFinalizeSimkl()
       }
@@ -671,6 +698,8 @@ BarWidget {
     id: simklShowsFetchProc
     running: false
     command: []
+    stdinEnabled: true
+    onStarted: root.writeSimklToken(simklShowsFetchProc)
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: {
@@ -678,13 +707,13 @@ BarWidget {
       }
     }
     onExited: function(exitCode) {
+      if (root.simklGen !== root.syncGen) return
       if (exitCode === 63) {
         root.syncError = "Simkl response exceeded size limit"
+      } else if (exitCode !== 0 && !root.syncError) {
+        root.syncError = "Simkl API is down or unreachable"
       }
-      if (root.simklGen === root.syncGen && !root.simklShowsDone) {
-        if (exitCode !== 0 && !root.syncError) {
-          root.syncError = "Simkl API is down or unreachable"
-        }
+      if (!root.simklShowsDone) {
         root.simklShowsDone = true
         root.tryFinalizeSimkl()
       }
@@ -707,10 +736,11 @@ BarWidget {
   }
 
   // Aborts an in-flight PIN link with an optional user-facing message.
+  // Quickshell's Process has no kill(); setting running = false sends SIGTERM.
   function stopSimklLink(message) {
     pinPollTimer.stop()
-    if (simklPinStartProc.running) simklPinStartProc.kill()
-    if (simklPinPollProc.running) simklPinPollProc.kill()
+    if (simklPinStartProc.running) simklPinStartProc.running = false
+    if (simklPinPollProc.running) simklPinPollProc.running = false
     root.simklUserCode = ""
     root.simklPinExpiresAt = 0
     root.simklLinking = false
@@ -718,14 +748,17 @@ BarWidget {
   }
 
   function unlinkSimkl(message) {
+    // Invalidate in-flight requests before clearing state: their callbacks
+    // would otherwise overwrite the unlink result (revoked message, profile).
+    root.syncGen++
     pinPollTimer.stop()
-    if (simklPinStartProc.running) simklPinStartProc.kill()
-    if (simklPinPollProc.running) simklPinPollProc.kill()
-    if (simklFetchProc.running) simklFetchProc.kill()
-    if (simklShowsFetchProc.running) simklShowsFetchProc.kill()
-    if (simklCalendarProc.running) simklCalendarProc.kill()
-    if (simklTvCalendarProc.running) simklTvCalendarProc.kill()
-    if (simklProfileProc.running) simklProfileProc.kill()
+    if (simklPinStartProc.running) simklPinStartProc.running = false
+    if (simklPinPollProc.running) simklPinPollProc.running = false
+    if (simklFetchProc.running) simklFetchProc.running = false
+    if (simklShowsFetchProc.running) simklShowsFetchProc.running = false
+    if (simklCalendarProc.running) simklCalendarProc.running = false
+    if (simklTvCalendarProc.running) simklTvCalendarProc.running = false
+    if (simklProfileProc.running) simklProfileProc.running = false
     root.simklToken = ""
     root.simklUserCode = ""
     root.simklPinExpiresAt = 0
@@ -837,27 +870,23 @@ BarWidget {
       simklCalendarMap = {}
       pendingSimklRaw = ""
       pendingSimklShowsRaw = ""
-      // Watchlist (anime + TV) + public calendars in parallel; all land
-      // before finalize. Docs: sync endpoints stay sequential per token,
-      // but these are three distinct requests at a 30-min cadence.
-      simklFetchProc.exec([
-        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+      // Watchlist (anime + TV), public calendars and the profile refresh run in
+      // parallel. The first four gate finalize; the profile refresh is
+      // opportunistic. Cadence follows checkIntervalMins.
+      simklFetchProc.exec(root.simklCurl([
         "--max-filesize", "10M",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-H", "simkl-api-key: " + root.simklClientId,
-        "-H", simklAuthHeader(root.simklToken),
         "-w", "\\n%{http_code}",
         Logic.buildSimklListUrl("anime", root.simklClientId)
-      ])
-      simklShowsFetchProc.exec([
-        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+      ]))
+      simklShowsFetchProc.exec(root.simklCurl([
         "--max-filesize", "10M",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-H", "simkl-api-key: " + root.simklClientId,
-        "-H", simklAuthHeader(root.simklToken),
         "-w", "\\n%{http_code}",
         Logic.buildSimklListUrl("shows", root.simklClientId)
-      ])
+      ]))
       simklCalendarProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "--max-filesize", "10M",
@@ -872,17 +901,15 @@ BarWidget {
         Logic.buildSimklTvCalendarUrl()
       ])
       // Profile refresh is opportunistic (name/avatar may have changed).
-      simklProfileProc.exec([
-        "curl", "-fsS", "--proto", "=https", "--max-time", "15",
+      simklProfileProc.exec(root.simklCurl([
         "--max-filesize", "1M",
         "-X", "POST",
         "-H", "User-Agent: OmarchyAniSync/1.0",
         "-H", "Content-Type: application/json",
         "-H", "simkl-api-key: " + root.simklClientId,
-        "-H", simklAuthHeader(root.simklToken),
         "-d", "",
         Logic.buildSimklUserSettingsUrl(root.simklClientId)
-      ])
+      ]))
     } else {
       root.malGen = root.syncGen
       malFetchProc.exec([
@@ -1070,10 +1097,23 @@ BarWidget {
 
   // ------------------------------------------------------------- Simkl Sync Pipeline
 
-  // Assembles the auth header. The scheme word is assembled from char codes
-  // so credential redaction in editing/transport layers can never corrupt it.
-  function simklAuthHeader(token) {
-    return "Authorization: " + String.fromCharCode(66, 101, 97, 114) + "er " + token
+  // The bearer token is never passed as a curl argument: /proc/<pid>/cmdline is
+  // world-readable, so any local user could read the linked account token from
+  // the command line. The token goes to this wrapper's stdin (Process.write)
+  // and curl reads the header from stdin with -H @- instead.
+  readonly property string simklCurlWrapper: "read -r _tok || exit 1; " +
+    "printf '%s\\n' \"Authorization: Bearer $_tok\" | " +
+    "curl -fsS --proto =https --max-time 15 -H @- \"$@\""
+
+  function simklCurl(args) {
+    return ["sh", "-c", root.simklCurlWrapper, "anisync-simkl"].concat(args)
+  }
+
+  // Line breaks would let a malformed stored token smuggle extra headers into
+  // the stdin header stream; strip them before writing.
+  function writeSimklToken(proc) {
+    var tok = String(root.simklToken || "").replace(/[\r\n]/g, "")
+    proc.write(tok + "\n")
   }
 
   function onSimklFetched(rawText) {
@@ -1193,27 +1233,26 @@ BarWidget {
       return
     }
     searchProc.searchGen++
+    var reqGen = searchProc.searchGen
     root.isSearching = true
     var payload = Logic.buildAniListSearchQuery(query.trim())
     searchProc.exec([
-      "curl", "-fsS", "--proto", "=https", "--max-time", "10",
-      "--max-filesize", "2M",
-      "-X", "POST", "https://graphql.anilist.co",
-      "-H", "Content-Type: application/json",
-      "-H", "User-Agent: OmarchyAniSync/1.0",
-      "-d", payload
+      "sh", "-c", "printf '%s\\n' \"$1\"; exec curl -fsS --proto =https --max-time 10 --max-filesize 2M -X POST https://graphql.anilist.co -H 'Content-Type: application/json' -H 'User-Agent: OmarchyAniSync/1.0' -d \"$2\"",
+      "anisync-search", String(reqGen), payload
     ])
   }
 
   function clearSearch() {
     searchProc.searchGen++
-    if (searchProc.running) searchProc.kill()
+    if (searchProc.running) {
+      searchProc.running = false
+    }
     root.searchResults = []
     root.isSearching = false
   }
 
   function onSearchFetched(rawText, reqGen) {
-    if (reqGen !== undefined && reqGen !== searchProc.searchGen) return
+    if (reqGen !== searchProc.searchGen) return
     root.isSearching = false
     if (!rawText) return
     root.searchResults = Logic.parseSearchResponse(rawText)

@@ -6,7 +6,7 @@
 `BarWidget.qml` always contained the correct auth header on disk. The `***`
 seen in terminal output is a DISPLAY-LAYER redaction of the scheme word
 (the toolchain masks things that look like credentials). Verified byte-level:
-the file contains "Authoriz"+"ation: Bear"+"er ..." exactly twice, zero 0x2a
+the file contains "Authoriz"+"ation: Bear"+"er ..." exactly once now, zero 0x2a
 bytes anywhere. Nothing to fix. (Lesson: verify with hex dump before patching.)
 
 ## Done (all tests green: 29/29 via `npm test`)
@@ -56,13 +56,15 @@ bytes anywhere. Nothing to fix. (Lesson: verify with hex dump before patching.)
 - TV airing times joined from https://data.simkl.in/calendar/tv.json (rows carry ids.tmdb not ids.mal → parseSimklCalendar keys "t<tmdb>" too; parseSimklResponse falls back s→m→t).
 - client_id is set: d86082069c0ccbc190721239d90678e23b15bf4913f005c1f1fa72f3558ae5ff (BarWidget.qml simklClientId).
 
-## ⚠️ Toolchain quirk learned (do not "fix" this again)
-The terminal/patch OUTPUT display redacts the auth scheme word ("Bear"+"er") to `***`
-because it looks like a credential. THE FILES ON DISK WERE ALWAYS CORRECT.
-Verify with byte dumps (python open('x','rb')), never by what grep/cat prints.
-simklAuthHeader() now builds the scheme via String.fromCharCode(66,101,97,114)+"er "
-so even the source literal can't trip any filter. Runtime verified: header ===
-"Authorization: " + B-e-a-r-e-r + " " + token.
+## ⚠️ Toolchain quirk learned (historical)
+The terminal/patch OUTPUT display used to redact the auth scheme word to `***`
+because it looked like a credential. THE FILES ON DISK WERE ALWAYS CORRECT;
+verify with byte dumps, never by what grep/cat prints.
+
+The old workaround (building the scheme with String.fromCharCode) is gone. The
+header is no longer in source literals or argv at all: curl reads it from stdin
+via `-H @-`, fed by `Process.write()`. Only the token-free template
+`"Authorization: Bearer $_tok"` appears in source.
 
 ## Key design facts (from api.simkl.org docs, do not re-research)
 - PIN flow: GET /oauth/pin?client_id=… → {user_code, verification_uri, expires_in 900, interval 5}; poll GET /oauth/pin/{code} every interval; KO=pending, OK+access_token=authorized, reply containing device_code = original code gone (expired). Token ~5yr, no refresh, no secret needed.
