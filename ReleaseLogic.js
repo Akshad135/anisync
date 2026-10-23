@@ -137,7 +137,7 @@ function buildAniListSearchQuery(searchQuery) {
 var MAX_URL_LENGTH = 1024
 var MAX_STRING_LENGTH = 300
 var MAX_LIST_ENTRIES = 500
-var MAX_CALENDAR_ENTRIES = 2000
+var MAX_CALENDAR_ENTRIES = 20000
 var MAX_SEARCH_RESULTS = 50
 
 function validateArtworkUrl(url) {
@@ -877,7 +877,7 @@ function splitCurlHttpStatus(rawText) {
 var SIMKL_API_BASE = "https://api.simkl.com"
 var SIMKL_CALENDAR_URL = "https://data.simkl.in/calendar/anime.json"
 var SIMKL_APP_NAME = "anisync"
-var SIMKL_APP_VERSION = "1.2.2"
+var SIMKL_APP_VERSION = "1.2.3"
 
 // client_id / app-name / app-version are required URL parameters on every
 // Simkl request (see api.simkl.org/conventions/headers).

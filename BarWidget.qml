@@ -106,6 +106,7 @@ BarWidget {
   readonly property color colDim: Qt.darker(Color.foreground, 1.45)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
+  readonly property string userAgent: "OmarchyAniSync/1.2.3"
   readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/plugins/akshad135.anisync"
   readonly property string artworkDir: stateDir + "/artwork"
   readonly property string settingsFilePath: stateDir + "/settings.json"
@@ -269,6 +270,21 @@ BarWidget {
   }
 
   // ------------------------------------------------------------- Cache Snapshot
+  // Cached items must never resurrect remote cover URLs; only local artwork is
+  // rendered by the UI (see Artwork Cache Pipeline).
+  function sanitizeCachedList(list) {
+    if (!list || list.length === 0) return []
+    var out = []
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i]
+      if (!it) continue
+      var copy = Object.assign({}, it)
+      if (copy.cover && String(copy.cover).indexOf("file://") !== 0) copy.cover = ""
+      out.push(copy)
+    }
+    return out
+  }
+
   function hydrateFromCache(raw) {
     if (!root.ready && raw) {
       try {
@@ -278,16 +294,21 @@ BarWidget {
             ? c.tracker
             : { seen: {}, lastEp: {}, initialized: false }
           root.artworkLocalMap = (c.artworkMap && typeof c.artworkMap === "object") ? c.artworkMap : {}
+          // Caches written before the artwork pipeline hold remote https URLs.
+          // Never hand those to the QML shell: expose only local files and let
+          // the next sync re-populate the rest through the artwork downloader.
+          var cachedAvatar = typeof c.avatar === "string" ? c.avatar : ""
+          var cachedBanner = typeof c.banner === "string" ? c.banner : ""
           root.rawUserAvatar = c.rawAvatar || ""
           root.rawUserBanner = c.rawBanner || ""
-          root.watchingList = c.watchingAnime || []
-          root.readingManga = c.readingManga || []
-          root.upcomingList = c.upcomingAnime || []
+          root.watchingList = root.sanitizeCachedList(c.watchingAnime)
+          root.readingManga = root.sanitizeCachedList(c.readingManga)
+          root.upcomingList = root.sanitizeCachedList(c.upcomingAnime)
           root.enrichMap = c.malToAnilist || {}
-          root.userAvatar = c.avatar || ""
-          root.aniAvatar = root.provider === "anilist" ? (c.avatar || "") : ""
-          root.malAvatar = root.provider === "mal" ? (c.avatar || "") : ""
-          root.userBanner = c.banner || ""
+          root.userAvatar = cachedAvatar.indexOf("file://") === 0 ? cachedAvatar : ""
+          root.aniAvatar = root.provider === "anilist" ? root.userAvatar : ""
+          root.malAvatar = root.provider === "mal" ? root.userAvatar : ""
+          root.userBanner = cachedBanner.indexOf("file://") === 0 ? cachedBanner : ""
           root.lastSyncText = c.lastSyncText || ""
           root.updateTicker()
         }
@@ -1055,6 +1076,9 @@ BarWidget {
     root.pendingMALManga = null
     root.pendingEnrichTarget = null
     root.enrichQueue = []
+    // Retry artwork that failed earlier (offline start, timeout, transient 404):
+    // queueArtworkFetch skips failed URLs for the session otherwise.
+    root.artworkFailedMap = {}
 
     if (root.provider === "anilist") {
       root.aniListGen = root.syncGen
@@ -1066,7 +1090,7 @@ BarWidget {
         "--max-filesize", "10M",
         "-X", "POST", "https://graphql.anilist.co",
         "-H", "Content-Type: application/json",
-        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "User-Agent: " + root.userAgent,
         "-d", payload
       ])
     } else if (root.provider === "simkl") {
@@ -1087,14 +1111,14 @@ BarWidget {
       // opportunistic. Cadence follows checkIntervalMins.
       simklFetchProc.exec(root.simklCurl([
         "--max-filesize", "10M",
-        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "User-Agent: " + root.userAgent,
         "-H", "simkl-api-key: " + root.simklClientId,
         "-w", "\\n%{http_code}",
         Logic.buildSimklListUrl("anime", root.simklClientId)
       ]))
       simklShowsFetchProc.exec(root.simklCurl([
         "--max-filesize", "10M",
-        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "User-Agent: " + root.userAgent,
         "-H", "simkl-api-key: " + root.simklClientId,
         "-w", "\\n%{http_code}",
         Logic.buildSimklListUrl("shows", root.simklClientId)
@@ -1102,21 +1126,21 @@ BarWidget {
       simklCalendarProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "--max-filesize", "10M",
-        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "User-Agent: " + root.userAgent,
         Logic.buildSimklCalendarUrl()
       ])
       // TV calendar is a second public CDN file, not a token-scoped call.
       simklTvCalendarProc.exec([
         "curl", "-fsS", "--proto", "=https", "--max-time", "15",
         "--max-filesize", "15M",
-        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "User-Agent: " + root.userAgent,
         Logic.buildSimklTvCalendarUrl()
       ])
       // Profile refresh is opportunistic (name/avatar may have changed).
       simklProfileProc.exec(root.simklCurl([
         "--max-filesize", "1M",
         "-X", "POST",
-        "-H", "User-Agent: OmarchyAniSync/1.0",
+        "-H", "User-Agent: " + root.userAgent,
         "-H", "Content-Type: application/json",
         "-H", "simkl-api-key: " + root.simklClientId,
         "-d", "",
@@ -1257,7 +1281,7 @@ BarWidget {
       "--max-filesize", "2M",
       "-X", "POST", "https://graphql.anilist.co",
       "-H", "Content-Type: application/json",
-      "-H", "User-Agent: OmarchyAniSync/1.0",
+      "-H", "User-Agent: " + root.userAgent,
       "-d", Logic.buildAniListMalEnrichQuery(chunk)
     ])
   }
@@ -1456,7 +1480,7 @@ BarWidget {
     root.isSearching = true
     var payload = Logic.buildAniListSearchQuery(query.trim())
     searchProc.exec([
-      "sh", "-c", "printf '%s\\n' \"$1\"; exec curl -fsS --proto =https --max-time 10 --max-filesize 2M -X POST https://graphql.anilist.co -H 'Content-Type: application/json' -H 'User-Agent: OmarchyAniSync/1.0' -d \"$2\"",
+      "sh", "-c", "printf '%s\\n' \"$1\"; exec curl -fsS --proto =https --max-time 10 --max-filesize 2M -X POST https://graphql.anilist.co -H 'Content-Type: application/json' -H 'User-Agent: " + root.userAgent + "' -d \"$2\"",
       "anisync-search", String(reqGen), payload
     ])
   }

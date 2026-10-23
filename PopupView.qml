@@ -77,15 +77,13 @@ Item {
   readonly property string activeBanner: {
     var cb = root.customBanner ? root.customBanner.trim() : ""
     if (cb.length > 0) {
-      if (cb.indexOf("https://") === 0) {
-        if (host && host.artworkLocalMap && host.artworkLocalMap[cb]) {
-          return host.artworkLocalMap[cb]
-        }
-        return ""
-      }
       if (cb.indexOf("file://") === 0) return cb
       if (cb.indexOf("/") === 0) return "file://" + cb
-      return ""
+      // Remote banners are only used once the artwork pipeline cached them;
+      // until then fall through to account artwork instead of a blank header.
+      if (cb.indexOf("https://") === 0 && host && host.artworkLocalMap && host.artworkLocalMap[cb]) {
+        return host.artworkLocalMap[cb]
+      }
     }
     if (root.userBanner && root.userBanner.trim().length > 0) return root.userBanner.trim()
     if (root.watchingList && root.watchingList.length > 0 && root.watchingList[0].cover) {

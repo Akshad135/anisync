@@ -40,7 +40,7 @@ bytes anywhere. Nothing to fix. (Lesson: verify with hex dump before patching.)
 
 ## Remaining
 1. Live smoke test: `omarchy plugin add ... --enable && omarchy restart shell`; connect via PIN, confirm ticker/countdowns/notifications.
-2. Commit (version-bumped to 1.2.0 in manifest.json + package.json; SIMKL_APP_VERSION in ReleaseLogic.js matches).
+2. Commit (version-bumped to 1.2.3 in manifest.json + package.json; SIMKL_APP_VERSION in ReleaseLogic.js matches).
 
 ## Lifecycle bugs found & fixed (Akshad's live test, 2026-08-23)
 - **Stale name after connect**: post-auth sync() ran the OLD provider branch (committed provider was still anilist) -> header kept showing frizzy135. Fix: authorized path now commits provider="simkl", clears userName, saves settings BEFORE calling sync().
