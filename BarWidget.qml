@@ -1479,6 +1479,21 @@ BarWidget {
     root.queueArtworkFetch()
   }
 
+  readonly property string notificationWrapperScript:
+    "dir=\"$1\"; target=\"$2\"; url=\"$3\"; shift 3; " +
+    "if [ ! -s \"$target\" ] && [ -n \"$url\" ]; then " +
+    "mkdir -p \"$dir\" && chmod 700 \"$dir\" 2>/dev/null || true; " +
+    "tmp=\"$target.tmp.$$\"; " +
+    "if curl -fsS --proto =https --max-time 6 --max-filesize 2M -o \"$tmp\" \"$url\" && mv \"$tmp\" \"$target\"; then " +
+    "chmod 600 \"$target\" 2>/dev/null || true; " +
+    "else rm -f \"$tmp\"; fi; " +
+    "fi; " +
+    "if [ -s \"$target\" ]; then " +
+    "exec omarchy-notification-send --image \"file://$target\" \"$@\"; " +
+    "else " +
+    "exec omarchy-notification-send \"$@\"; " +
+    "fi"
+
   function sendDropNotification(drop) {
     var title
     if (drop.count > 1) {
@@ -1490,20 +1505,39 @@ BarWidget {
       title = "New Episode: " + drop.title + " Ep " + drop.maxEp
     }
     var desc = "Now streaming! Click to open."
-    var cmd = [
-      "omarchy-notification-send",
+    var targetPath = ""
+    var remoteUrl = ""
+    if (drop.cover && typeof drop.cover === "string") {
+      var c = drop.cover.trim()
+      if (c.indexOf("file://") === 0) {
+        targetPath = c.slice(7)
+      } else if (c.indexOf("/") === 0) {
+        targetPath = c
+      } else if (c.indexOf("https://") === 0) {
+        remoteUrl = c
+        var fn = root.artworkFilename(c)
+        if (fn) targetPath = root.artworkDir + "/" + fn
+      }
+    }
+
+    var args = [
       "-g", "󰵪",
       "-u", "normal",
-      "--app-name", "AniSync"
+      "--app-name", "AniSync",
+      title,
+      desc
     ]
-    if (drop.cover && String(drop.cover).indexOf("https://") === 0) {
-      cmd.push("--image", String(drop.cover))
-    }
-    cmd.push(title, desc)
     if (drop.siteUrl && (String(drop.siteUrl).indexOf("https://") === 0 || String(drop.siteUrl).indexOf("http://") === 0)) {
-      cmd.push("--exec", "xdg-open", String(drop.siteUrl))
+      args.push("--exec", "xdg-open", String(drop.siteUrl))
     }
-    Quickshell.execDetached(cmd)
+
+    Quickshell.execDetached([
+      "sh", "-c", root.notificationWrapperScript,
+      "anisync-drop-notif",
+      root.artworkDir,
+      targetPath,
+      remoteUrl
+    ].concat(args))
   }
 
   function testNotification() {
