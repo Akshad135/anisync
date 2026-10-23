@@ -81,6 +81,11 @@ BarWidget {
   property string syncError: ""
   property string userBanner: ""
   property string customBanner: ""
+  property string rawUserAvatar: ""
+  property string rawUserBanner: ""
+  property var artworkLocalMap: ({})
+  property var artworkFailedMap: ({})
+  property var artworkBatchUrls: []
 
   // Popup controller
   property bool popupOpen: false
@@ -102,6 +107,7 @@ BarWidget {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property string stateDir: Quickshell.env("HOME") + "/.local/state/omarchy/plugins/akshad135.anisync"
+  readonly property string artworkDir: stateDir + "/artwork"
   readonly property string settingsFilePath: stateDir + "/settings.json"
   readonly property string cacheFilePath: stateDir + "/cache.json"
 
@@ -111,7 +117,7 @@ BarWidget {
   Process {
     id: ensureDirProc
     command: ["sh", "-c",
-      "umask 077; mkdir -p \"$1\" || exit 1; chmod 700 \"$1\" || exit 1; " +
+      "umask 077; mkdir -p \"$1\" \"$1/artwork\" || exit 1; chmod 700 \"$1\" \"$1/artwork\" || exit 1; " +
       "[ ! -e \"$1/settings.json\" ] || chmod 600 \"$1/settings.json\" || exit 1",
       "anisync-state", root.stateDir]
     onExited: function(code) {
@@ -271,6 +277,9 @@ BarWidget {
           root.seenDrops = (c.tracker && typeof c.tracker === "object")
             ? c.tracker
             : { seen: {}, lastEp: {}, initialized: false }
+          root.artworkLocalMap = (c.artworkMap && typeof c.artworkMap === "object") ? c.artworkMap : {}
+          root.rawUserAvatar = c.rawAvatar || ""
+          root.rawUserBanner = c.rawBanner || ""
           root.watchingList = c.watchingAnime || []
           root.readingManga = c.readingManga || []
           root.upcomingList = c.upcomingAnime || []
@@ -305,8 +314,11 @@ BarWidget {
     var payload = {
       provider: root.provider,
       user: root.userName,
+      rawAvatar: root.rawUserAvatar,
+      rawBanner: root.rawUserBanner,
       avatar: root.userAvatar,
       banner: root.userBanner,
+      artworkMap: root.artworkLocalMap,
       lastSyncText: root.lastSyncText,
       watchingAnime: root.watchingList,
       readingManga: root.readingManga,
@@ -320,6 +332,7 @@ BarWidget {
   // Wipes all account-scoped state. Called when provider or userName changes.
   function resetAccount() {
     root.syncGen++
+    if (artworkFetchProc.running) artworkFetchProc.running = false
     root.watchingList = []
     root.readingManga = []
     root.upcomingList = []
@@ -336,6 +349,11 @@ BarWidget {
     root.simklShowsDone = false
     root.simklCalendarDone = false
     root.simklTvCalendarDone = false
+    root.rawUserAvatar = ""
+    root.rawUserBanner = ""
+    root.artworkLocalMap = {}
+    root.artworkFailedMap = {}
+    root.artworkBatchUrls = []
     root.userAvatar = ""
     root.aniAvatar = ""
     root.malAvatar = ""
@@ -423,8 +441,10 @@ BarWidget {
         if (root.malGen !== root.syncGen) return
         var av = Logic.parseMALUserAvatar(String(text || ""))
         if (av) {
-          root.malAvatar = av
-          if (!root.userAvatar) root.userAvatar = av
+          root.rawUserAvatar = av
+          root.malAvatar = root.artworkLocalMap[av] || ""
+          if (!root.userAvatar) root.userAvatar = root.malAvatar
+          root.queueArtworkFetch()
         }
       }
     }
@@ -477,6 +497,191 @@ BarWidget {
         root.isSearching = false
       }
     }
+  }
+
+  // ------------------------------------------------------------- Artwork Cache Pipeline
+  // Downloads remote covers, banners, and avatars in the background via curl with
+  // strict transfer size limits (--max-filesize 2M) and proto=https enforcement,
+  // storing them in owner-only stateDir/artwork/. Only verified local file://
+  // paths are exposed to the UI shell to prevent unbounded network requests or
+  // memory exhaustion during image decode.
+  readonly property string artworkDownloadScript:
+    "dir=\"$1\"; shift; " +
+    "while [ \"$#\" -ge 2 ]; do " +
+    "name=\"$1\"; url=\"$2\"; shift 2; " +
+    "target=\"$dir/$name\"; " +
+    "if [ -s \"$target\" ]; then printf '%s\\t%s\\n' \"$url\" \"$name\"; continue; fi; " +
+    "tmp=\"$target.tmp.$$\"; " +
+    "if curl -fsS --proto =https --max-time 10 --max-filesize 2M -o \"$tmp\" \"$url\" && mv \"$tmp\" \"$target\"; then " +
+    "chmod 600 \"$target\" 2>/dev/null || true; " +
+    "printf '%s\\t%s\\n' \"$url\" \"$name\"; " +
+    "else rm -f \"$tmp\"; fi; " +
+    "done"
+
+  Process {
+    id: artworkFetchProc
+    running: false
+    command: []
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        root.onArtworkBatchFinished(String(text || "").trim())
+      }
+    }
+    onExited: function(exitCode) {
+      artworkNextBatchTimer.restart()
+    }
+  }
+
+  Timer {
+    id: artworkNextBatchTimer
+    interval: 50
+    repeat: false
+    onTriggered: root.queueArtworkFetch()
+  }
+
+  function artworkFilename(url) {
+    if (!url || typeof url !== "string") return ""
+    var h = 0
+    for (var i = 0; i < url.length; i++) {
+      h = ((h << 5) - h) + url.charCodeAt(i)
+      h |= 0
+    }
+    var hex = (h >>> 0).toString(16)
+    var ext = ".img"
+    if (url.indexOf(".png") !== -1) ext = ".png"
+    else if (url.indexOf(".webp") !== -1) ext = ".webp"
+    else if (url.indexOf(".jpg") !== -1 || url.indexOf(".jpeg") !== -1) ext = ".jpg"
+    return hex + ext
+  }
+
+  function queueArtworkFetch() {
+    if (artworkFetchProc.running) return
+    var toFetch = []
+    var seen = {}
+    var collect = function(u) {
+      if (!u || typeof u !== "string" || u.indexOf("https://") !== 0 || seen[u]) return
+      seen[u] = true
+      if (root.artworkLocalMap && root.artworkLocalMap[u]) return
+      if (root.artworkFailedMap && root.artworkFailedMap[u]) return
+      var fn = artworkFilename(u)
+      if (!fn) return
+      toFetch.push(fn)
+      toFetch.push(u)
+    }
+
+    if (root.rawUserAvatar) collect(root.rawUserAvatar)
+    if (root.rawUserBanner) collect(root.rawUserBanner)
+    if (root.customBanner && root.customBanner.indexOf("https://") === 0) collect(root.customBanner)
+
+    var addFromList = function(list) {
+      if (!list) return
+      for (var i = 0; i < list.length; i++) {
+        if (list[i] && list[i].rawCover) collect(list[i].rawCover)
+      }
+    }
+
+    addFromList(root.watchingList)
+    addFromList(root.readingManga)
+    addFromList(root.upcomingList)
+    addFromList(root.searchResults)
+
+    if (toFetch.length === 0) return
+    var batch = []
+    for (var j = 1; j < toFetch.length; j += 2) {
+      batch.push(toFetch[j])
+    }
+    root.artworkBatchUrls = batch
+    artworkFetchProc.exec([
+      "sh", "-c", root.artworkDownloadScript, "anisync-artwork", root.artworkDir
+    ].concat(toFetch))
+  }
+
+  function onArtworkBatchFinished(rawText) {
+    var lines = (rawText || "").split("\n")
+    var updated = false
+    var newMap = Object.assign({}, root.artworkLocalMap)
+    var successMap = {}
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim()
+      if (!line) continue
+      var parts = line.split("\t")
+      if (parts.length >= 2) {
+        var u = parts[0]
+        var name = parts[1]
+        var localUrl = "file://" + root.artworkDir + "/" + name
+        successMap[u] = true
+        if (newMap[u] !== localUrl) {
+          newMap[u] = localUrl
+          updated = true
+        }
+      }
+    }
+    if (root.artworkBatchUrls && root.artworkBatchUrls.length > 0) {
+      var newFailed = Object.assign({}, root.artworkFailedMap)
+      for (var k = 0; k < root.artworkBatchUrls.length; k++) {
+        var bUrl = root.artworkBatchUrls[k]
+        if (!successMap[bUrl] && !newMap[bUrl]) {
+          newFailed[bUrl] = true
+        }
+      }
+      root.artworkFailedMap = newFailed
+      root.artworkBatchUrls = []
+    }
+    if (updated) {
+      root.artworkLocalMap = newMap
+      root.applyLocalArtwork()
+      root.saveCache()
+    }
+    artworkNextBatchTimer.restart()
+  }
+
+  function applyLocalArtwork() {
+    if (root.rawUserAvatar) {
+      var aLoc = root.artworkLocalMap[root.rawUserAvatar]
+      root.userAvatar = aLoc ? aLoc : ""
+      root.aniAvatar = root.userAvatar
+      root.malAvatar = root.userAvatar
+    }
+    if (root.rawUserBanner) {
+      var bLoc = root.artworkLocalMap[root.rawUserBanner]
+      root.userBanner = bLoc ? bLoc : ""
+    }
+    root.watchingList = remapCovers(root.watchingList)
+    root.readingManga = remapCovers(root.readingManga)
+    root.upcomingList = remapCovers(root.upcomingList)
+    root.searchResults = remapCovers(root.searchResults)
+  }
+
+  function remapCovers(list) {
+    if (!list || list.length === 0) return []
+    var out = []
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i]
+      var copy = Object.assign({}, it)
+      if (it.rawCover) {
+        copy.cover = root.artworkLocalMap[it.rawCover] || ""
+      }
+      out.push(copy)
+    }
+    return out
+  }
+
+  function prepList(list) {
+    if (!list || list.length === 0) return []
+    var out = []
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i]
+      var copy = Object.assign({}, it)
+      copy.rawCover = it.cover || ""
+      if (copy.cover && copy.cover.indexOf("file://") === 0) {
+        // already local
+      } else {
+        copy.cover = root.artworkLocalMap[copy.rawCover] || ""
+      }
+      out.push(copy)
+    }
+    return out
   }
 
   // ------------------------------------------------------------- Simkl Processes
@@ -597,7 +802,11 @@ BarWidget {
           return
         }
         root.userName = profile.userName
-        root.userAvatar = profile.avatar
+        if (profile.avatar) {
+          root.rawUserAvatar = profile.avatar
+          root.userAvatar = root.artworkLocalMap[profile.avatar] || ""
+          root.queueArtworkFetch()
+        }
         root.saveSettings()
         root.saveCache()
       }
@@ -759,12 +968,15 @@ BarWidget {
     if (simklCalendarProc.running) simklCalendarProc.running = false
     if (simklTvCalendarProc.running) simklTvCalendarProc.running = false
     if (simklProfileProc.running) simklProfileProc.running = false
+    if (artworkFetchProc.running) artworkFetchProc.running = false
     root.simklToken = ""
     root.simklUserCode = ""
     root.simklPinExpiresAt = 0
     root.simklLinking = false
     root.userName = ""
     root.userAvatar = ""
+    root.rawUserAvatar = ""
+    root.rawUserBanner = ""
     root.saveSettings()
     if (message) {
       root.isFetching = false
@@ -950,20 +1162,25 @@ BarWidget {
       return
     }
 
-    root.watchingList = parsed.watchingAnime || []
-    root.readingManga = parsed.readingManga || []
-    root.upcomingList = parsed.upcomingAnime || []
+    root.watchingList = root.prepList(parsed.watchingAnime)
+    root.readingManga = root.prepList(parsed.readingManga)
+    root.upcomingList = root.prepList(parsed.upcomingAnime)
     if (parsed.updatedTrackerState) {
       root.seenDrops = parsed.updatedTrackerState
     }
     if (parsed.userAvatar) {
-      root.aniAvatar = parsed.userAvatar
-      root.userAvatar = parsed.userAvatar
+      root.rawUserAvatar = parsed.userAvatar
+      root.userAvatar = root.artworkLocalMap[parsed.userAvatar] || ""
+      root.aniAvatar = root.userAvatar
     }
-    if (parsed.userBanner) root.userBanner = parsed.userBanner
+    if (parsed.userBanner) {
+      root.rawUserBanner = parsed.userBanner
+      root.userBanner = root.artworkLocalMap[parsed.userBanner] || ""
+    }
 
     root.notifyNewDrops(parsed.newDrops)
     root.finalizeSync()
+    root.queueArtworkFetch()
   }
 
   function onMALFetched(rawText) {
@@ -1080,8 +1297,8 @@ BarWidget {
 
     if (root.pendingMALAnime !== false) {
       var res = Logic.applyEnrichment(animeList, root.enrichMap)
-      root.watchingList = res.anime
-      root.upcomingList = res.upcoming
+      root.watchingList = root.prepList(res.anime)
+      root.upcomingList = root.prepList(res.upcoming)
 
       var drops = Logic.detectDrops(res.anime, root.seenDrops)
       root.seenDrops = drops.updatedTrackerState
@@ -1089,10 +1306,11 @@ BarWidget {
     }
 
     if (root.pendingMALManga !== false) {
-      root.readingManga = mangaList
+      root.readingManga = root.prepList(mangaList)
     }
 
     root.finalizeSync()
+    root.queueArtworkFetch()
   }
 
   // ------------------------------------------------------------- Simkl Sync Pipeline
@@ -1211,14 +1429,15 @@ BarWidget {
       return String(a.title).localeCompare(String(b.title))
     })
 
-    root.watchingList = combined
+    root.watchingList = root.prepList(combined)
     root.readingManga = []
-    root.upcomingList = upcoming
+    root.upcomingList = root.prepList(upcoming)
 
     var drops = Logic.detectDrops(combined, root.seenDrops)
     root.seenDrops = drops.updatedTrackerState
     root.notifyNewDrops(drops.newDrops)
     root.finalizeSync()
+    root.queueArtworkFetch()
   }
 
   function finalizeSimklFailure(message) {
@@ -1255,7 +1474,9 @@ BarWidget {
     if (reqGen !== searchProc.searchGen) return
     root.isSearching = false
     if (!rawText) return
-    root.searchResults = Logic.parseSearchResponse(rawText)
+    var list = Logic.parseSearchResponse(rawText)
+    root.searchResults = root.prepList(list)
+    root.queueArtworkFetch()
   }
 
   function sendDropNotification(drop) {

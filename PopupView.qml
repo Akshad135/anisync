@@ -75,7 +75,18 @@ Item {
   readonly property bool mangaAvailable: root.provider !== "simkl"
 
   readonly property string activeBanner: {
-    if (root.customBanner && root.customBanner.trim().length > 0) return root.customBanner.trim()
+    var cb = root.customBanner ? root.customBanner.trim() : ""
+    if (cb.length > 0) {
+      if (cb.indexOf("https://") === 0) {
+        if (host && host.artworkLocalMap && host.artworkLocalMap[cb]) {
+          return host.artworkLocalMap[cb]
+        }
+        return ""
+      }
+      if (cb.indexOf("file://") === 0) return cb
+      if (cb.indexOf("/") === 0) return "file://" + cb
+      return ""
+    }
     if (root.userBanner && root.userBanner.trim().length > 0) return root.userBanner.trim()
     if (root.watchingList && root.watchingList.length > 0 && root.watchingList[0].cover) {
       return root.watchingList[0].cover
@@ -221,6 +232,7 @@ Item {
         anchors.fill: parent
         source: root.activeBanner
         fillMode: Image.PreserveAspectCrop
+        sourceSize: Qt.size(Style.space(440), Style.space(160))
         asynchronous: true
         opacity: 0.32
         visible: root.activeBanner.length > 0
@@ -254,6 +266,7 @@ Item {
             anchors.fill: parent
             source: root.userAvatar
             fillMode: Image.PreserveAspectCrop
+            sourceSize: Qt.size(Style.space(64), Style.space(64))
             visible: root.userAvatar.length > 0
             asynchronous: true
           }
@@ -572,6 +585,7 @@ Item {
                 anchors.fill: parent
                 source: modelData.cover || ""
                 fillMode: Image.PreserveAspectCrop
+                sourceSize: Qt.size(Style.space(72), Style.space(108))
                 asynchronous: true
               }
 
@@ -823,6 +837,7 @@ Item {
                 anchors.fill: parent
                 source: modelData.cover || ""
                 fillMode: Image.PreserveAspectCrop
+                sourceSize: Qt.size(Style.space(72), Style.space(108))
                 asynchronous: true
               }
 
@@ -1072,6 +1087,7 @@ Item {
                   anchors.fill: parent
                   source: modelData.cover || ""
                   fillMode: Image.PreserveAspectCrop
+                  sourceSize: Qt.size(Style.space(72), Style.space(108))
                   asynchronous: true
                 }
               }
@@ -1412,6 +1428,7 @@ Item {
                     source: root.userAvatar
                     visible: root.userAvatar.length > 0
                     fillMode: Image.PreserveAspectCrop
+                    sourceSize: Qt.size(Style.space(56), Style.space(56))
                   }
 
                   Image {

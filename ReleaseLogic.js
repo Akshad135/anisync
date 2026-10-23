@@ -132,23 +132,117 @@ function buildAniListSearchQuery(searchQuery) {
   })
 }
 
+// ----------------------------------------------------------- Input Validation & Bounds
+
+var MAX_URL_LENGTH = 1024
+var MAX_STRING_LENGTH = 300
+var MAX_LIST_ENTRIES = 500
+var MAX_CALENDAR_ENTRIES = 2000
+var MAX_SEARCH_RESULTS = 50
+
+function validateArtworkUrl(url) {
+  if (!url || typeof url !== "string") return ""
+  // Reject control characters, whitespace, newlines, quotes, backslashes, angle brackets
+  if (/[\x00-\x20\x7F-\x9F"'<>\\]/.test(url)) return ""
+
+  var trimmed = url.trim()
+  if (trimmed.length === 0 || trimmed.length > MAX_URL_LENGTH) return ""
+
+  // Must strictly start with https://
+  if (trimmed.indexOf("https://") !== 0) return ""
+
+  // Parse host from URL
+  var afterScheme = trimmed.substring(8)
+  var slashIdx = afterScheme.indexOf("/")
+  var host = (slashIdx >= 0 ? afterScheme.substring(0, slashIdx) : afterScheme).toLowerCase()
+
+  // Host must not be empty or start/end with dot/dash
+  if (!host || host.indexOf(".") === -1 || host.charAt(0) === "." || host.charAt(host.length - 1) === ".") return ""
+
+  // Block localhost and private/loopback/link-local/broadcast IP ranges
+  if (host === "localhost" ||
+      /^127\./.test(host) ||
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host) ||
+      /^169\.254\./.test(host) ||
+      /^0\./.test(host) ||
+      /^255\.255\.255\.255$/.test(host) ||
+      /^\[/.test(host) ||
+      host.indexOf(":") !== -1) {
+    return ""
+  }
+
+  // Must have a valid domain structure (letters, digits, hyphens, dots)
+  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host)) {
+    return ""
+  }
+
+  return trimmed
+}
+
+function boundString(val, maxLen) {
+  if (val === null || val === undefined) return ""
+  var str = String(val).trim()
+  var limit = maxLen || MAX_STRING_LENGTH
+  if (str.length > limit) {
+    return str.substring(0, limit)
+  }
+  return str
+}
+
+function boundInt(val, min, max, defaultVal) {
+  if (val === null || val === undefined || val === "") return defaultVal !== undefined ? defaultVal : null
+  var n = parseInt(val, 10)
+  if (isNaN(n)) return defaultVal !== undefined ? defaultVal : null
+  if (min !== undefined && n < min) return min
+  if (max !== undefined && n > max) return max
+  return n
+}
+
+function boundFloat(val, min, max, defaultVal) {
+  if (val === null || val === undefined || val === "") return defaultVal !== undefined ? defaultVal : null
+  var n = parseFloat(val)
+  if (isNaN(n)) return defaultVal !== undefined ? defaultVal : null
+  if (min !== undefined && n < min) return min
+  if (max !== undefined && n > max) return max
+  return n
+}
+
+function boundSiteUrl(url) {
+  if (!url || typeof url !== "string") return ""
+  var trimmed = url.trim()
+  if (trimmed.length === 0 || trimmed.length > MAX_URL_LENGTH) return ""
+  if (trimmed.indexOf("https://") !== 0) return ""
+  if (/[\x00-\x20\x7F-\x9F"'<>\\]/.test(trimmed)) return ""
+  return trimmed
+}
+
 // ----------------------------------------------------------- Data Normalization
 
 function getTitle(media) {
   if (!media) return "Unknown Title"
-  if (typeof media.title === "string") return media.title
-  if (media.title && typeof media.title === "object") {
-    return media.title.english || media.title.romaji || media.title.native || "Unknown Title"
+  var raw = ""
+  if (typeof media.title === "string") raw = media.title
+  else if (media.title && typeof media.title === "object") {
+    raw = media.title.english || media.title.romaji || media.title.native || "Unknown Title"
+  } else {
+    raw = media.anime_title_eng || media.anime_title || media.manga_english || media.manga_title || "Unknown Title"
   }
-  return media.anime_title_eng || media.anime_title || "Unknown Title"
+  return boundString(raw, 256) || "Unknown Title"
 }
 
 function getCover(media) {
   if (!media) return ""
+  var raw = ""
   if (media.coverImage) {
-    return media.coverImage.large || media.coverImage.medium || ""
+    raw = media.coverImage.large || media.coverImage.medium || ""
+  } else if (media.anime_image_path) {
+    raw = media.anime_image_path
+  } else if (media.manga_image_path) {
+    raw = media.manga_image_path
   }
-  return media.anime_image_path || ""
+  return validateArtworkUrl(raw)
 }
 
 // ----------------------------------------------------------- AniList Parser
@@ -205,10 +299,10 @@ function parseAniListResponse(rawJson, trackerState) {
   }
 
   if (data.data && data.data.user) {
-    result.userName = data.data.user.name || ""
-    result.userBanner = data.data.user.bannerImage || ""
+    result.userName = boundString(data.data.user.name, 64) || ""
+    result.userBanner = validateArtworkUrl(data.data.user.bannerImage)
     if (data.data.user.avatar) {
-      result.userAvatar = data.data.user.avatar.large || data.data.user.avatar.medium || ""
+      result.userAvatar = validateArtworkUrl(data.data.user.avatar.large || data.data.user.avatar.medium)
     }
   } else if (!data.data || !data.data.user) {
     result.error = "User not found on AniList"
@@ -222,52 +316,56 @@ function parseAniListResponse(rawJson, trackerState) {
   var seenIds = {}
 
   // Parse Anime Lists (CURRENT / Watching only)
-  for (var i = 0; i < animeLists.length; i++) {
+  var animeListsLimit = Math.min(animeLists.length, 20)
+  for (var i = 0; i < animeListsLimit; i++) {
     var list = animeLists[i]
-    var listStatus = (list.status || "").toUpperCase()
+    var listStatus = boundString(list.status, 32).toUpperCase()
     if (listStatus !== "CURRENT") continue
-    var entries = list.entries || []
+    var entries = Array.isArray(list.entries) ? list.entries : []
+    var entriesLimit = Math.min(entries.length, MAX_LIST_ENTRIES)
 
-    for (var j = 0; j < entries.length; j++) {
+    for (var j = 0; j < entriesLimit; j++) {
       var entry = entries[j]
+      if (!entry) continue
       var media = entry.media
-      if (!media || seenIds["anime_" + media.id]) continue
+      if (!media || !media.id || seenIds["anime_" + media.id]) continue
       seenIds["anime_" + media.id] = true
+
+      var mId = boundInt(media.id, 1, 2147483647, null)
+      if (!mId) continue
 
       var title = getTitle(media)
       var cover = getCover(media)
       var nextEp = media.nextAiringEpisode
-      var currentNextEp = nextEp ? nextEp.episode : null
+      var currentNextEp = nextEp ? boundInt(nextEp.episode, 0, 50000, null) : null
+      var airingAt = nextEp ? boundInt(nextEp.airingAt, 0, 4102444800, null) : null
 
       var item = {
-        id: "al_a_" + media.id,
-        mediaId: media.id,
+        id: "al_a_" + mId,
+        mediaId: mId,
         type: "ANIME",
         title: title,
-        romaji: (media.title && media.title.romaji) || "",
-        english: (media.title && media.title.english) || "",
+        romaji: boundString(media.title && media.title.romaji, 256),
+        english: boundString(media.title && media.title.english, 256),
         cover: cover,
-        progress: entry.progress || 0,
-        totalEpisodes: media.episodes || null,
-        status: media.status || "UNKNOWN",
+        progress: boundInt(entry.progress, 0, 50000, 0),
+        totalEpisodes: boundInt(media.episodes, 0, 50000, null),
+        status: boundString(media.status || "UNKNOWN", 32),
         userStatus: listStatus,
-        score: entry.score || 0,
-        siteUrl: media.siteUrl || ("https://anilist.co/anime/" + media.id),
-        genres: media.genres || [],
-        averageScore: media.averageScore || 0,
+        score: boundFloat(entry.score, 0, 100, 0),
+        siteUrl: boundSiteUrl(media.siteUrl) || ("https://anilist.co/anime/" + mId),
+        genres: Array.isArray(media.genres) ? media.genres.slice(0, 10).map(function(g) { return boundString(g, 32); }) : [],
+        averageScore: boundFloat(media.averageScore, 0, 100, 0),
         nextEpisode: currentNextEp,
-        airingAt: nextEp ? nextEp.airingAt : null,
-        timeUntilAiring: nextEp ? (nextEp.airingAt - nowSec) : null
+        airingAt: airingAt,
+        timeUntilAiring: airingAt ? (airingAt - nowSec) : null
       }
 
       result.watchingAnime.push(item)
 
       // If there is an upcoming episode in the future, add to upcoming list
-      if (nextEp && nextEp.airingAt) {
-        var diff = nextEp.airingAt - nowSec
-        if (diff > 0) {
-          result.upcomingAnime.push(item)
-        }
+      if (airingAt && (airingAt - nowSec > 0)) {
+        result.upcomingAnime.push(item)
       }
     }
   }
@@ -284,34 +382,40 @@ function parseAniListResponse(rawJson, trackerState) {
   })
 
   // Parse Manga Lists (CURRENT / Reading only)
-  for (var m = 0; m < mangaLists.length; m++) {
+  var mangaListsLimit = Math.min(mangaLists.length, 20)
+  for (var m = 0; m < mangaListsLimit; m++) {
     var mList = mangaLists[m]
-    var mStatus = (mList.status || "").toUpperCase()
+    var mStatus = boundString(mList.status, 32).toUpperCase()
     if (mStatus !== "CURRENT") continue
-    var mEntries = mList.entries || []
+    var mEntries = Array.isArray(mList.entries) ? mList.entries : []
+    var mEntriesLimit = Math.min(mEntries.length, MAX_LIST_ENTRIES)
 
-    for (var k = 0; k < mEntries.length; k++) {
+    for (var k = 0; k < mEntriesLimit; k++) {
       var mEntry = mEntries[k]
+      if (!mEntry) continue
       var mMedia = mEntry.media
-      if (!mMedia || seenIds["manga_" + mMedia.id]) continue
+      if (!mMedia || !mMedia.id || seenIds["manga_" + mMedia.id]) continue
       seenIds["manga_" + mMedia.id] = true
 
+      var mmId = boundInt(mMedia.id, 1, 2147483647, null)
+      if (!mmId) continue
+
       var mItem = {
-        id: "al_m_" + mMedia.id,
-        mediaId: mMedia.id,
+        id: "al_m_" + mmId,
+        mediaId: mmId,
         type: "MANGA",
         title: getTitle(mMedia),
         cover: getCover(mMedia),
-        progress: mEntry.progress || 0,
-        progressVolumes: mEntry.progressVolumes || 0,
-        totalChapters: mMedia.chapters || null,
-        totalVolumes: mMedia.volumes || null,
-        status: mMedia.status || "UNKNOWN",
+        progress: boundInt(mEntry.progress, 0, 50000, 0),
+        progressVolumes: boundInt(mEntry.progressVolumes, 0, 50000, 0),
+        totalChapters: boundInt(mMedia.chapters, 0, 50000, null),
+        totalVolumes: boundInt(mMedia.volumes, 0, 50000, null),
+        status: boundString(mMedia.status || "UNKNOWN", 32),
         userStatus: mStatus,
-        score: mEntry.score || 0,
-        siteUrl: mMedia.siteUrl || ("https://anilist.co/manga/" + mMedia.id),
-        genres: mMedia.genres || [],
-        averageScore: mMedia.averageScore || 0
+        score: boundFloat(mEntry.score, 0, 100, 0),
+        siteUrl: boundSiteUrl(mMedia.siteUrl) || ("https://anilist.co/manga/" + mmId),
+        genres: Array.isArray(mMedia.genres) ? mMedia.genres.slice(0, 10).map(function(g) { return boundString(g, 32); }) : [],
+        averageScore: boundFloat(mMedia.averageScore, 0, 100, 0)
       }
 
       result.readingManga.push(mItem)
@@ -514,20 +618,24 @@ function parseEnrichResponse(rawJson) {
   }
 
   var mediaList = (data.data && data.data.Page && data.data.Page.media) || []
-  for (var i = 0; i < mediaList.length; i++) {
+  var mediaLimit = Math.min(mediaList.length, MAX_LIST_ENTRIES)
+  for (var i = 0; i < mediaLimit; i++) {
     var m = mediaList[i]
     if (!m || m.idMal === null || m.idMal === undefined) continue
     var nextEp = m.nextAiringEpisode
-    map[String(m.idMal)] = {
-      id: m.id,
-      status: m.status || "UNKNOWN",
-      totalEpisodes: m.episodes || null,
-      nextEpisode: nextEp ? nextEp.episode : null,
-      airingAt: nextEp ? nextEp.airingAt : null,
-      cover: m.coverImage ? (m.coverImage.large || m.coverImage.medium || "") : "",
-      siteUrl: m.siteUrl || "",
-      genres: m.genres || [],
-      averageScore: m.averageScore || 0
+    var mIdMal = boundInt(m.idMal, 1, 2147483647, null)
+    if (!mIdMal) continue
+    var coverRaw = m.coverImage ? (m.coverImage.large || m.coverImage.medium || "") : ""
+    map[String(mIdMal)] = {
+      id: boundInt(m.id, 1, 2147483647, null),
+      status: boundString(m.status || "UNKNOWN", 32),
+      totalEpisodes: boundInt(m.episodes, 0, 50000, null),
+      nextEpisode: nextEp ? boundInt(nextEp.episode, 0, 50000, null) : null,
+      airingAt: nextEp ? boundInt(nextEp.airingAt, 0, 4102444800, null) : null,
+      cover: validateArtworkUrl(coverRaw),
+      siteUrl: boundSiteUrl(m.siteUrl),
+      genres: Array.isArray(m.genres) ? m.genres.slice(0, 10).map(function(g) { return boundString(g, 32); }) : [],
+      averageScore: boundFloat(m.averageScore, 0, 100, 0)
     }
   }
 
@@ -625,24 +733,27 @@ function parseMALListResponse(rawJson) {
     return list
   }
 
-  for (var i = 0; i < data.length; i++) {
+  var rowLimit = Math.min(data.length, MAX_LIST_ENTRIES)
+  for (var i = 0; i < rowLimit; i++) {
     var row = data[i]
     if (!row) continue
     if (row.status !== undefined && row.status !== 1 && row.status !== "1") continue
-    var title = row.anime_title_eng || row.anime_title || "Unknown"
+    var mId = boundInt(row.anime_id, 1, 2147483647, null)
+    if (!mId) continue
+    var title = boundString(row.anime_title_eng || row.anime_title, 256) || "Unknown"
     list.push({
-      id: "mal_a_" + row.anime_id,
-      mediaId: row.anime_id,
+      id: "mal_a_" + mId,
+      mediaId: mId,
       type: "ANIME",
       title: title,
-      romaji: row.anime_title || "",
-      english: row.anime_title_eng || "",
-      cover: row.anime_image_path || "",
-      progress: row.num_watched_episodes || 0,
-      totalEpisodes: row.anime_num_episodes || null,
+      romaji: boundString(row.anime_title, 256),
+      english: boundString(row.anime_title_eng, 256),
+      cover: validateArtworkUrl(row.anime_image_path),
+      progress: boundInt(row.num_watched_episodes, 0, 50000, 0),
+      totalEpisodes: boundInt(row.anime_num_episodes, 0, 50000, null),
       status: row.anime_airing_status === 1 ? "RELEASING" : (row.anime_airing_status === 2 ? "FINISHED" : "NOT_YET_RELEASED"),
-      score: row.score || 0,
-      siteUrl: "https://myanimelist.net" + (row.anime_url || ("/anime/" + row.anime_id)),
+      score: boundFloat(row.score, 0, 100, 0),
+      siteUrl: boundSiteUrl("https://myanimelist.net" + (row.anime_url || ("/anime/" + mId))),
       nextEpisode: null,
       airingAt: null,
       timeUntilAiring: null,
@@ -697,24 +808,27 @@ function parseMALMangaResponse(rawJson) {
     return list
   }
 
-  for (var i = 0; i < data.length; i++) {
+  var mRowLimit = Math.min(data.length, MAX_LIST_ENTRIES)
+  for (var i = 0; i < mRowLimit; i++) {
     var row = data[i]
     if (!row) continue
     if (row.status !== undefined && row.status !== 1 && row.status !== "1") continue
-    var title = row.manga_english || row.manga_title || "Unknown"
+    var mgId = boundInt(row.manga_id, 1, 2147483647, null)
+    if (!mgId) continue
+    var title = boundString(row.manga_english || row.manga_title, 256) || "Unknown"
     list.push({
-      id: "mal_m_" + row.manga_id,
-      mediaId: row.manga_id,
+      id: "mal_m_" + mgId,
+      mediaId: mgId,
       type: "MANGA",
       title: title,
-      romaji: row.manga_title || "",
-      english: row.manga_english || "",
-      cover: row.manga_image_path || "",
-      progress: row.num_read_chapters || 0,
-      totalChapters: row.manga_num_chapters || null,
+      romaji: boundString(row.manga_title, 256),
+      english: boundString(row.manga_english, 256),
+      cover: validateArtworkUrl(row.manga_image_path),
+      progress: boundInt(row.num_read_chapters, 0, 50000, 0),
+      totalChapters: boundInt(row.manga_num_chapters, 0, 50000, null),
       status: row.manga_publishing_status === 1 ? "RELEASING" : (row.manga_publishing_status === 2 ? "FINISHED" : "NOT_YET_RELEASED"),
-      score: row.score || 0,
-      siteUrl: "https://myanimelist.net" + (row.manga_url || ("/manga/" + row.manga_id)),
+      score: boundFloat(row.score, 0, 100, 0),
+      siteUrl: boundSiteUrl("https://myanimelist.net" + (row.manga_url || ("/manga/" + mgId))),
       source: "MAL"
     })
   }
@@ -725,7 +839,7 @@ function parseMALMangaResponse(rawJson) {
 function parseMALUserAvatar(html) {
   if (!html || typeof html !== "string") return ""
   var match = html.match(/<div class="user-image[^>]*>[\s\S]*?<img[^>]+(?:data-src|src)="([^">]+)"/i)
-  return match ? match[1] : ""
+  return match && match[1] ? validateArtworkUrl(match[1]) : ""
 }
 
 
@@ -861,9 +975,9 @@ function parseSimklUserProfile(rawJson) {
     out.error = "Could not read Simkl profile"
     return out
   }
-  out.userName = String(data.user.name || "")
-  out.avatar = String(data.user.avatar || "")
-  out.accountType = String((data.account && data.account.type) || "")
+  out.userName = boundString(data.user.name, 64)
+  out.avatar = validateArtworkUrl(data.user.avatar)
+  out.accountType = boundString((data.account && data.account.type) || "", 32)
   return out
 }
 
@@ -901,15 +1015,20 @@ function parseSimklCalendar(rawJson) {
   }
   if (!Array.isArray(data)) return map
 
-  for (var i = 0; i < data.length; i++) {
+  var calLimit = Math.min(data.length, MAX_CALENDAR_ENTRIES)
+  for (var i = 0; i < calLimit; i++) {
     var row = data[i]
     if (!row || !row.date || !row.episode || row.episode.episode === undefined || row.episode.episode === null) continue
     var epochMs = Date.parse(String(row.date))
     if (isNaN(epochMs)) continue
+    var epNum = boundInt(row.episode.episode, 0, 50000, null)
+    if (epNum === null) continue
+    var airingEpoch = boundInt(Math.floor(epochMs / 1000), 0, 4102444800, null)
+    if (!airingEpoch) continue
     var info = {
-      episode: row.episode.episode,
-      airingAt: Math.floor(epochMs / 1000),
-      siteUrl: (row.episode && row.episode.url) || row.url || ""
+      episode: epNum,
+      airingAt: airingEpoch,
+      siteUrl: boundSiteUrl((row.episode && row.episode.url) || row.url)
     }
     var ids = row.ids || {}
     var keys = []
@@ -941,7 +1060,9 @@ function parseSimklCalendar(rawJson) {
 // Posters are served as webp at simkl.in; placeholder covers gaps.
 function simklPosterUrl(posterPath) {
   if (!posterPath) return "https://simkl.in/poster_no_pic_c.png"
-  return "https://simkl.in/posters/" + posterPath + "_w.webp"
+  var clean = String(posterPath).replace(/[^a-zA-Z0-9_\/-]/g, "")
+  if (!clean) return "https://simkl.in/poster_no_pic_c.png"
+  return validateArtworkUrl("https://simkl.in/posters/" + clean + "_w.webp")
 }
 
 // Normalizes GET /sync/all-items/:type/watching rows into the shared item
@@ -1001,21 +1122,20 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
   var entries = Array.isArray(data[type]) ? data[type] : []
   var cal = calendarMap || {}
   var nowSec = Math.floor(Date.now() / 1000)
+  var simklLimit = Math.min(entries.length, MAX_LIST_ENTRIES)
 
-  for (var i = 0; i < entries.length; i++) {
+  for (var i = 0; i < simklLimit; i++) {
     var row = entries[i]
     if (!row) continue
     var show = row.anime || row.show || {}
     var ids = show.ids || {}
     var simklId = ids.simkl !== undefined ? ids.simkl : ids.simkl_id
     if (simklId === undefined || simklId === null) continue
-    simklId = Number(simklId)
+    simklId = boundInt(simklId, 1, 2147483647, null)
+    if (!simklId) continue
 
-    var title = String(show.title || "Unknown")
-    var totalEpisodes = row.total_episodes_count || null
-    // not_aired_episodes_count is the cleanest release-status signal the
-    // watchlist summary offers: >0 still airing, 0 with a known total means
-    // everything has aired (drives finale catch-up in detectDrops).
+    var title = boundString(show.title, 256) || "Unknown"
+    var totalEpisodes = boundInt(row.total_episodes_count, 0, 50000, null)
     var notAired = row.not_aired_episodes_count
     var status = ""
     if (typeof notAired === "number") {
@@ -1030,17 +1150,17 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
       romaji: title,
       english: "",
       cover: simklPosterUrl(show.poster),
-      progress: row.watched_episodes_count || 0,
+      progress: boundInt(row.watched_episodes_count, 0, 50000, 0),
       totalEpisodes: totalEpisodes,
       status: status,
       userStatus: "CURRENT",
-      score: row.user_rating || 0,
-      siteUrl: "https://simkl.com/" + (type === "shows" ? "tv/" : "anime/") + simklId,
+      score: boundFloat(row.user_rating, 0, 10, 0),
+      siteUrl: boundSiteUrl("https://simkl.com/" + (type === "shows" ? "tv/" : "anime/") + simklId),
       genres: [],
       averageScore: 0,
-      malId: ids.mal !== undefined && ids.mal !== null ? Number(ids.mal) : null,
-      anilistId: ids.anilist !== undefined && ids.anilist !== null ? Number(ids.anilist) : null,
-      tmdbId: ids.tmdb !== undefined && ids.tmdb !== null && ids.tmdb !== "" ? Number(ids.tmdb) : null,
+      malId: ids.mal !== undefined && ids.mal !== null ? boundInt(ids.mal, 1, 2147483647, null) : null,
+      anilistId: ids.anilist !== undefined && ids.anilist !== null ? boundInt(ids.anilist, 1, 2147483647, null) : null,
+      tmdbId: ids.tmdb !== undefined && ids.tmdb !== null && ids.tmdb !== "" ? boundInt(ids.tmdb, 1, 2147483647, null) : null,
       nextEpisode: null,
       airingAt: null,
       timeUntilAiring: null,
@@ -1069,17 +1189,17 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
     }
 
     if (calInfo) {
-      item.nextEpisode = calInfo.episode
-      item.airingAt = calInfo.airingAt
-      if (calInfo.siteUrl) item.siteUrl = calInfo.siteUrl
+      item.nextEpisode = boundInt(calInfo.episode, 0, 50000, null)
+      item.airingAt = boundInt(calInfo.airingAt, 0, 4102444800, null)
+      if (calInfo.siteUrl) item.siteUrl = boundSiteUrl(calInfo.siteUrl) || item.siteUrl
     } else if (row.next_to_watch_info && row.next_to_watch_info.date) {
       var ntwMs = Date.parse(String(row.next_to_watch_info.date))
       if (!isNaN(ntwMs)) {
         var ntwSec = Math.floor(ntwMs / 1000)
         if (ntwSec > nowSec) {
-          item.airingAt = ntwSec
+          item.airingAt = boundInt(ntwSec, 0, 4102444800, null)
           if (row.next_to_watch_info.episode !== undefined && row.next_to_watch_info.episode !== null) {
-            item.nextEpisode = row.next_to_watch_info.episode
+            item.nextEpisode = boundInt(row.next_to_watch_info.episode, 0, 50000, null)
           }
         }
       }
@@ -1116,8 +1236,6 @@ function parseSimklResponse(rawJson, trackerState, calendarMap, listType) {
   return result
 }
 
-
-
 // ----------------------------------------------------------- Search Parser
 
 function parseSearchResponse(rawJson) {
@@ -1132,27 +1250,33 @@ function parseSearchResponse(rawJson) {
   }
 
   var mediaList = (data.data && data.data.Page && data.data.Page.media) || []
+  var searchLimit = Math.min(mediaList.length, MAX_SEARCH_RESULTS)
   var nowSec = Math.floor(Date.now() / 1000)
 
-  for (var i = 0; i < mediaList.length; i++) {
+  for (var i = 0; i < searchLimit; i++) {
     var media = mediaList[i]
-    if (!media) continue
+    if (!media || !media.id) continue
+    var sId = boundInt(media.id, 1, 2147483647, null)
+    if (!sId) continue
     var nextEp = media.nextAiringEpisode
+    var currentNextEp = nextEp ? boundInt(nextEp.episode, 0, 50000, null) : null
+    var airingAt = nextEp ? boundInt(nextEp.airingAt, 0, 4102444800, null) : null
+
     list.push({
-      id: "search_" + media.id,
-      mediaId: media.id,
-      type: media.type || "ANIME",
+      id: "search_" + sId,
+      mediaId: sId,
+      type: boundString(media.type, 16) || "ANIME",
       title: getTitle(media),
       cover: getCover(media),
-      format: media.format || "",
-      status: media.status || "",
-      episodes: media.episodes || null,
-      chapters: media.chapters || null,
-      averageScore: media.averageScore || null,
-      siteUrl: media.siteUrl || ("https://anilist.co/" + (media.type ? media.type.toLowerCase() : "anime") + "/" + media.id),
-      nextEpisode: nextEp ? nextEp.episode : null,
-      airingAt: nextEp ? nextEp.airingAt : null,
-      timeUntilAiring: nextEp ? (nextEp.airingAt - nowSec) : null
+      format: boundString(media.format, 16),
+      status: boundString(media.status, 32),
+      episodes: boundInt(media.episodes, 0, 50000, null),
+      chapters: boundInt(media.chapters, 0, 50000, null),
+      averageScore: boundFloat(media.averageScore, 0, 100, null),
+      siteUrl: boundSiteUrl(media.siteUrl) || ("https://anilist.co/" + (media.type ? media.type.toLowerCase() : "anime") + "/" + sId),
+      nextEpisode: currentNextEp,
+      airingAt: airingAt,
+      timeUntilAiring: airingAt ? (airingAt - nowSec) : null
     })
   }
 
@@ -1285,6 +1409,11 @@ if (typeof module !== "undefined" && module.exports) {
     formatAiringTime: formatAiringTime,
     formatRelativeTime: formatRelativeTime,
     getTitle: getTitle,
-    getCover: getCover
+    getCover: getCover,
+    validateArtworkUrl: validateArtworkUrl,
+    boundString: boundString,
+    boundInt: boundInt,
+    boundFloat: boundFloat,
+    boundSiteUrl: boundSiteUrl
   }
 }

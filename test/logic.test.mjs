@@ -859,6 +859,61 @@ test("formatShortTicker correctly displays Episode 0 without treating it as fals
   assert.equal(Logic.formatShortTicker(item), "Fate/Zero Ep 0 · in 1h")
 })
 
+test("validateArtworkUrl strictly allows valid HTTPS URLs and rejects local/private/insecure targets", () => {
+  // Valid HTTPS URLs
+  assert.equal(Logic.validateArtworkUrl("https://s4.anilist.co/file/anilistcdn/user/avatar/large/1.png"), "https://s4.anilist.co/file/anilistcdn/user/avatar/large/1.png")
+  assert.equal(Logic.validateArtworkUrl("https://cdn.myanimelist.net/images/anime/10/123.jpg?s=abc"), "https://cdn.myanimelist.net/images/anime/10/123.jpg?s=abc")
+  assert.equal(Logic.validateArtworkUrl("https://simkl.in/posters/12/34_w.webp"), "https://simkl.in/posters/12/34_w.webp")
+
+  // Rejection of insecure / non-HTTPS schemes
+  assert.equal(Logic.validateArtworkUrl("http://s4.anilist.co/img.png"), "")
+  assert.equal(Logic.validateArtworkUrl("file:///etc/passwd"), "")
+  assert.equal(Logic.validateArtworkUrl("data:image/png;base64,AAAA"), "")
+  assert.equal(Logic.validateArtworkUrl("javascript:alert(1)"), "")
+  assert.equal(Logic.validateArtworkUrl("ftp://example.com/img.png"), "")
+
+  // Rejection of loopback, private IP, and link-local targets (SSRF protection)
+  assert.equal(Logic.validateArtworkUrl("https://localhost/exploit.png"), "")
+  assert.equal(Logic.validateArtworkUrl("https://127.0.0.1/exploit.png"), "")
+  assert.equal(Logic.validateArtworkUrl("https://10.0.0.1/exploit.png"), "")
+  assert.equal(Logic.validateArtworkUrl("https://192.168.1.1/exploit.png"), "")
+  assert.equal(Logic.validateArtworkUrl("https://172.16.0.1/exploit.png"), "")
+  assert.equal(Logic.validateArtworkUrl("https://169.254.169.254/latest/meta-data"), "")
+  assert.equal(Logic.validateArtworkUrl("https://0.0.0.0/exploit.png"), "")
+  assert.equal(Logic.validateArtworkUrl("https://[::1]/exploit.png"), "")
+
+  // Rejection of control characters, whitespace, newlines, quotes
+  assert.equal(Logic.validateArtworkUrl("https://example.com/img.png\n"), "")
+  assert.equal(Logic.validateArtworkUrl("https://example.com/img.png\""), "")
+  assert.equal(Logic.validateArtworkUrl("https://example.com/img.png<script>"), "")
+
+  // Empty / null / oversized bounds
+  assert.equal(Logic.validateArtworkUrl(""), "")
+  assert.equal(Logic.validateArtworkUrl(null), "")
+  assert.equal(Logic.validateArtworkUrl("https://example.com/" + "a".repeat(2000)), "")
+})
+
+test("payload bounds clamp excessive numbers and strings across parsers", () => {
+  // Title bounding
+  assert.equal(Logic.boundString("A".repeat(500), 256).length, 256)
+  assert.equal(Logic.boundString(null, 256), "")
+
+  // Numeric bounding
+  assert.equal(Logic.boundInt(999999, 0, 50000, 0), 50000)
+  assert.equal(Logic.boundInt(-5, 0, 50000, 0), 0)
+  assert.equal(Logic.boundInt("invalid", 0, 50000, null), null)
+
+  // Float score bounding
+  assert.equal(Logic.boundFloat(150, 0, 100, 0), 100)
+  assert.equal(Logic.boundFloat(-10, 0, 100, 0), 0)
+
+  // URL bounding
+  assert.equal(Logic.boundSiteUrl("https://myanimelist.net/anime/1"), "https://myanimelist.net/anime/1")
+  assert.equal(Logic.boundSiteUrl("http://insecure.com"), "")
+  assert.equal(Logic.boundSiteUrl("javascript:evil()"), "")
+})
+
+
 
 
 
