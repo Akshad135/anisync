@@ -1035,7 +1035,13 @@ BarWidget {
     root.saveCache()
   }
 
+  // Per-sync cap on drop notifications. Each notification is a detached
+  // process plus a daemon message, so an unbounded show count must not
+  // flood either; overflow is coalesced into one summary notice.
+  readonly property int maxDropNotifications: 20
+
   // Groups new drops per show and sends one notification per show.
+  // Drops from detectDrops are range-aggregated (episodeStart/episodeEnd/count).
   function notifyNewDrops(newDrops) {
     if (!root.notifyOnRelease || !newDrops || newDrops.length === 0) return
     if (!root.seenDrops.seen) root.seenDrops.seen = {}
@@ -1043,6 +1049,8 @@ BarWidget {
     for (var i = 0; i < newDrops.length; i++) {
       var drop = newDrops[i]
       root.seenDrops.seen[drop.id] = Math.floor(Date.now() / 1000)
+      var startEp = drop.episodeStart !== undefined ? drop.episodeStart : drop.episode
+      var endEp = drop.episodeEnd !== undefined ? drop.episodeEnd : drop.episode
       var g = groups[drop.mediaId]
       if (!g) {
         g = groups[drop.mediaId] = {
@@ -1050,18 +1058,23 @@ BarWidget {
           cover: drop.cover,
           siteUrl: drop.siteUrl,
           count: 0,
-          minEp: drop.episode,
-          maxEp: drop.episode
+          minEp: startEp,
+          maxEp: endEp
         }
       }
-      g.count++
-      if (drop.episode < g.minEp) g.minEp = drop.episode
-      if (drop.episode > g.maxEp) g.maxEp = drop.episode
+      g.count += drop.count > 0 ? drop.count : 1
+      if (startEp < g.minEp) g.minEp = startEp
+      if (endEp > g.maxEp) g.maxEp = endEp
     }
+    var mediaKeys = []
     for (var mediaKey in groups) {
-      if (Object.prototype.hasOwnProperty.call(groups, mediaKey)) {
-        root.sendDropNotification(groups[mediaKey])
-      }
+      if (Object.prototype.hasOwnProperty.call(groups, mediaKey)) mediaKeys.push(mediaKey)
+    }
+    for (var n = 0; n < mediaKeys.length && n < root.maxDropNotifications; n++) {
+      root.sendDropNotification(groups[mediaKeys[n]])
+    }
+    if (mediaKeys.length > root.maxDropNotifications) {
+      root.sendOverflowNotification(mediaKeys.length - root.maxDropNotifications)
     }
   }
 
@@ -1572,6 +1585,20 @@ BarWidget {
       "--app-name", "AniSync",
       "AniSync Connected!",
       "Notifications are active. You will receive alerts when new episodes air."
+    ])
+  }
+
+  // One coalesced notice for shows beyond maxDropNotifications. All overflow
+  // drops are already marked seen, so this is informational only.
+  function sendOverflowNotification(remaining) {
+    if (remaining <= 0) return
+    Quickshell.execDetached([
+      "omarchy-notification-send",
+      "-g", "󰵪",
+      "-u", "low",
+      "--app-name", "AniSync",
+      remaining + " more shows have new episodes",
+      "Open your list to catch up."
     ])
   }
 

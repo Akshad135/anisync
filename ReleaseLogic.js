@@ -445,12 +445,43 @@ function parseAniListResponse(rawJson, trackerState) {
 
 // ----------------------------------------------------------- Drop Detection & Enrichment
 
+// One aggregated drop object per contiguous catch-up range, so a hostile
+// or degenerate provider interval (e.g. ep 1 -> 50000) costs O(1) memory
+// per show instead of one object per aired episode.
+function buildCatchupDrop(item, startEp, endEp, nowSec, isNew) {
+  var dropKey = item.mediaId + ":" + startEp + (endEp > startEp ? "-" + endEp : "")
+  return {
+    id: dropKey,
+    mediaId: item.mediaId,
+    type: "ANIME",
+    title: item.title,
+    episode: endEp,
+    episodeStart: startEp,
+    episodeEnd: endEp,
+    count: endEp - startEp + 1,
+    airedAt: nowSec,
+    cover: item.cover,
+    siteUrl: item.siteUrl,
+    isNew: isNew
+  }
+}
+
+// Key-presence test that never materializes a key array, so legacy
+// tracker states bloated by per-episode seen entries cannot force a
+// large allocation here.
+function hasAnyKey(obj) {
+  for (var k in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, k)) return true
+  }
+  return false
+}
+
 // Shared state-transition drop detection used by both AniList and MAL modes.
 // watchingAnime items need: mediaId, title, cover, siteUrl, status, nextEpisode.
 function detectDrops(watchingAnime, trackerState) {
   var seenMap = (trackerState && trackerState.seen) ? trackerState.seen : ((trackerState && typeof trackerState === "object") ? trackerState : {})
   var lastEpMap = (trackerState && trackerState.lastEp) ? trackerState.lastEp : {}
-  var isInitialized = trackerState ? (trackerState.initialized !== false && (Object.keys(lastEpMap).length > 0 || Object.keys(seenMap).length > 0)) : false
+  var isInitialized = trackerState ? (trackerState.initialized !== false && (hasAnyKey(lastEpMap) || hasAnyKey(seenMap))) : false
   var nowSec = Math.floor(Date.now() / 1000)
   var newLastEpMap = {}
   var recentDrops = []
@@ -470,54 +501,35 @@ function detectDrops(watchingAnime, trackerState) {
     if (isInitialized && prevEp !== undefined && prevEp !== null && prevEp !== "FINISHED") {
       if (currentNextEp !== null && currentNextEp > prevEp) {
         // Episodes from prevEp up to (currentNextEp - 1) have aired
-        for (var epNum = prevEp; epNum < currentNextEp; epNum++) {
-          var dropKey = item.mediaId + ":" + epNum
-          var isNew = !seenMap[dropKey]
-          var dropItem = {
-            id: dropKey,
-            mediaId: item.mediaId,
-            type: "ANIME",
-            title: item.title,
-            episode: epNum,
-            airedAt: nowSec,
-            cover: item.cover,
-            siteUrl: item.siteUrl,
-            isNew: isNew
-          }
-          recentDrops.push(dropItem)
-          if (isNew) {
-            newDrops.push(dropItem)
-          }
+        var catchupDrop = buildCatchupDrop(item, prevEp, currentNextEp - 1, nowSec, false)
+        catchupDrop.isNew = !seenMap[catchupDrop.id]
+        recentDrops.push(catchupDrop)
+        if (catchupDrop.isNew) {
+          newDrops.push(catchupDrop)
         }
       } else if (currentNextEp === null && item.status === "FINISHED" && prevEp !== "FINISHED") {
         // Show completed while we were away: catch up every episode after
         // prevEp, up to the known total (falls back to prevEp alone when the
         // total episode count is unknown).
         var lastAired = (item.totalEpisodes && item.totalEpisodes > prevEp) ? item.totalEpisodes : prevEp
-        for (var finEp = prevEp; finEp <= lastAired; finEp++) {
-          var finKey = item.mediaId + ":" + finEp
-          var finIsNew = !seenMap[finKey]
-          var finDrop = {
-            id: finKey,
-            mediaId: item.mediaId,
-            type: "ANIME",
-            title: item.title,
-            episode: finEp,
-            airedAt: nowSec,
-            cover: item.cover,
-            siteUrl: item.siteUrl,
-            isNew: finIsNew
-          }
-          recentDrops.push(finDrop)
-          if (finIsNew) {
-            newDrops.push(finDrop)
-          }
+        var finaleDrop = buildCatchupDrop(item, prevEp, lastAired, nowSec, false)
+        finaleDrop.isNew = !seenMap[finaleDrop.id]
+        recentDrops.push(finaleDrop)
+        if (finaleDrop.isNew) {
+          newDrops.push(finaleDrop)
         }
       }
     }
 
     // Record current next episode for future transitions
-    newLastEpMap[mediaIdStr] = currentNextEp !== null ? currentNextEp : (item.status === "FINISHED" ? "FINISHED" : (prevEp || null))
+    // Monotonic: a hostile or degenerate shrink of nextEpisode must not
+    // regress lastEp, or the next advance would re-notify already-seen
+    // episodes under a new range id.
+    var recordedEp = currentNextEp !== null ? currentNextEp : (item.status === "FINISHED" ? "FINISHED" : (prevEp || null))
+    if (typeof recordedEp === "number" && typeof prevEp === "number" && prevEp > recordedEp) {
+      recordedEp = prevEp
+    }
+    newLastEpMap[mediaIdStr] = recordedEp
   }
 
   // Prune seenMap: only keep seen drops for active CURRENT watching anime

@@ -208,13 +208,53 @@ test("detectDrops fires grouped alerts for MAL-enriched lists across syncs", () 
   const s1 = Logic.detectDrops(makeList(1170), { seen: {}, lastEp: {}, initialized: false })
   assert.equal(s1.newDrops.length, 0)
 
-  // Offline catch-up: 4 episodes aired at once -> 4 drops
+  // Offline catch-up: 4 episodes aired at once -> one aggregated drop
   const s2 = Logic.detectDrops(makeList(1174), s1.updatedTrackerState)
-  assert.equal(s2.newDrops.length, 4)
+  assert.equal(s2.newDrops.length, 1)
   assert.equal(s2.newDrops[0].title, "One Piece")
+  assert.equal(s2.newDrops[0].episodeStart, 1170)
+  assert.equal(s2.newDrops[0].episodeEnd, 1173)
+  assert.equal(s2.newDrops[0].count, 4)
 
   // No change -> no new drops
   const s3 = Logic.detectDrops(makeList(1174), s2.updatedTrackerState)
+  assert.equal(s3.newDrops.length, 0)
+})
+
+test("detectDrops bounds memory on hostile episode intervals", () => {
+  // 500 shows jumping from ep 1 to an accepted 50000 must not allocate
+  // one drop object per episode (~25M objects).
+  const makeHugeList = () => {
+    const list = []
+    for (let i = 1; i <= 500; i++) {
+      list.push({ mediaId: i, title: "Show " + i, cover: "", siteUrl: "", status: "RELEASING", nextEpisode: 50000 })
+    }
+    return list
+  }
+  const lastEp = {}
+  for (let i = 1; i <= 500; i++) lastEp[i] = 1
+  const next = Logic.detectDrops(makeHugeList(), { seen: {}, lastEp: lastEp, initialized: true })
+  assert.equal(next.recentDrops.length, 500)
+  assert.equal(next.recentDrops[0].episodeStart, 1)
+  assert.equal(next.recentDrops[0].episodeEnd, 49999)
+  assert.equal(next.recentDrops[0].count, 49999)
+})
+
+test("detectDrops does not re-notify after a hostile nextEpisode shrink", () => {
+  const list = (nextEp) => [{ mediaId: 21, title: "One Piece", cover: "", siteUrl: "", status: "RELEASING", nextEpisode: nextEp }]
+
+  // Advance to 1174 and mark the range notified
+  const s1 = Logic.detectDrops(list(1174), { seen: {}, lastEp: { 21: 1170 }, initialized: true })
+  assert.equal(s1.newDrops.length, 1)
+  const seenState = { seen: { [s1.newDrops[0].id]: 1 }, lastEp: s1.updatedTrackerState.lastEp, initialized: true }
+
+  // Hostile shrink to 5 must not regress lastEp...
+  const s2 = Logic.detectDrops(list(5), seenState)
+  assert.equal(s2.updatedTrackerState.lastEp[21], 1174)
+  assert.equal(s2.newDrops.length, 0)
+
+  // ...so re-advancing to 1174 produces no duplicate notification
+  const s3 = Logic.detectDrops(list(1174), s2.updatedTrackerState)
   assert.equal(s3.newDrops.length, 0)
 })
 
@@ -713,8 +753,10 @@ test("finale after multi-week gap catches up every missed episode up to the tota
 
   // Last seen next-episode was 13; eps 13 and 14 aired while offline
   const res = Logic.parseAniListResponse(payload, { seen: {}, lastEp: { [showId]: 13 }, initialized: true })
-  assert.equal(res.newDrops.length, 2)
-  assert.deepEqual(res.newDrops.map(d => d.episode).sort(), [13, 14])
+  assert.equal(res.newDrops.length, 1)
+  assert.equal(res.newDrops[0].episodeStart, 13)
+  assert.equal(res.newDrops[0].episodeEnd, 14)
+  assert.equal(res.newDrops[0].count, 2)
 
   // Unknown total degrades to previous behavior (only prevEp alerted)
   const noTotal = JSON.parse(JSON.stringify(payload))
